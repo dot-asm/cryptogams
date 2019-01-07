@@ -1,16 +1,16 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Performance in cycles per processed byte, streaming large buffers.
 ;;
-;;		node.js v10
+;;		node.js v10	[scalar] asm
 ;;
-;; Cortex-A7	25.0
-;; Cortex-A15	12.0
-;; Cortex-A53	11.0
-;; Cortex-A57	6.6
-;; POWER8	9.0
-;; z13		9.0
-;; Silvermont	7.0
-;; Haswell	3.3
+;; Cortex-A7	25.0		6.35
+;; Cortex-A15	12.0		3.85
+;; Cortex-A53	11.0		2.69
+;; Cortex-A57	6.6		2.70
+;; POWER8	9.0		2.03
+;; z13		9.0		2.30
+;; Silvermont	7.0		2.83
+;; Haswell	3.3		1.14
 ;;
 ;; Even though "WebAssembly aims to execute at native speed", the results
 ;; fall far from what respective platforms achieve. On 32-bit platforms
