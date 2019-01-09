@@ -30,7 +30,7 @@
 #
 # (*)	gcc-5.x-generated code, no [scalar] assembly;
 #
-# CONSTRAINS.
+# CONSTRAINTS.
 #
 # There is implicit dependency on byte order with rationale that all
 # known .NET platforms are little-endian.
@@ -1185,6 +1185,9 @@ $code.=<<___;
     .method public hidebysig instance
     int32 Absorb(unsigned int8[] inp, int32 bsz)
     {
+        .locals init (
+            unsigned int8& pinned pinp,
+            unsigned int64& pinned Aij )
         .locals (
             unsigned int64 *ptr,
             native unsigned int len,
@@ -1195,11 +1198,18 @@ $code.=<<___;
         dup
         stloc   len
         ldarg.2
-        blt.s   Ldone64
+        blt.un  Ldone64
+
+        ldarg.0
+        ldflda  unsigned int64 ${class}::$A[0][0]
+        stloc   Aij
 
         ldarg.1
         ldc.i4.0
-        ldelema [mscorlib]System.Byte
+        ldelema unsigned int8
+        dup
+        stloc   pinp
+        conv.u
         stloc   ptr
 
         sizeof  native int
@@ -1211,8 +1221,7 @@ $code.=<<___;
         stloc   counter         // counter = 0
 
     Loop64:
-        ldarg.0
-        ldflda  unsigned int64 ${class}::$A[0][0]
+        ldloc   Aij
         ldloc   counter
         add
         dup
@@ -1244,7 +1253,7 @@ $code.=<<___;
         dup
         stloc   len             // len -= bsz
         ldarg.2
-        bge.s   Loop64          // len >= bsz?
+        bge.un  Loop64          // len >= bsz?
 
     Ldone64:
         ldloc   len
@@ -1257,8 +1266,7 @@ $code.=<<___;
         stloc   counter         // counter = 0
 
     Loop32:
-        ldarg.0
-        ldflda  unsigned int64 ${class}::$A[0][0]
+        ldloc   Aij
         ldloc   counter
         add
         dup
@@ -1291,7 +1299,7 @@ $code.=<<___;
         dup
         stloc   len             // len -= bsz
         ldarg.2
-        bge.s   Loop32          // len >= bsz?
+        bge.un  Loop32          // len >= bsz?
 
     Ldone32:
         ldloc   len
@@ -1302,6 +1310,9 @@ $code.=<<___;
     .method public hidebysig instance
     void Squeeze(unsigned int8[] res, int32 bsz)
     {
+        .locals init (
+            unsigned int8& pinned pres,
+            unsigned int64& pinned Aij )
         .locals (
             unsigned int64 *ptr,
             native unsigned int len,
@@ -1314,9 +1325,16 @@ $code.=<<___;
         stloc   len
         brfalse Ldone64
 
+        ldarg.0
+        ldflda  unsigned int64 ${class}::$A[0][0]
+        stloc   Aij
+
         ldarg.1
         ldc.i4.0
-        ldelema [mscorlib]System.Byte
+        ldelema unsigned int8
+        dup
+        stloc   pres
+        conv.u
         stloc   ptr
 
         ldarg.0
@@ -1332,13 +1350,12 @@ $code.=<<___;
     Loop64:
         ldloc   len
         ldc.i4.8
-        blt.s   Ltail64
+        blt.un  Ltail64
 
         ldloc   ptr
         dup
 
-        ldarg.0
-        ldflda  unsigned int64 ${class}::$A[0][0]
+        ldloc   Aij
         ldloc   counter
         add
         ldind.u8
@@ -1375,8 +1392,7 @@ $code.=<<___;
         br.s    Loop64
 
     Ltail64:
-        ldarg.0
-        ldflda  unsigned int64 ${class}::$A[0][0]
+        ldloc   Aij
         ldloc   counter
         add
         ldind.u8
@@ -1409,13 +1425,12 @@ $code.=<<___;
     Loop32:
         ldloc   len
         ldc.i4.8
-        blt.s   Ltail32
+        blt.un  Ltail32
 
         ldloc   ptr
         dup
 
-        ldarg.0
-        ldflda  unsigned int64 ${class}::$A[0][0]
+        ldloc   Aij
         ldloc   counter
         add
         ldind.u8
@@ -1453,8 +1468,7 @@ $code.=<<___;
         br.s    Loop32
 
     Ltail32:
-        ldarg.0
-        ldflda  unsigned int64 ${class}::$A[0][0]
+        ldloc   Aij
         ldloc   counter
         add
         ldind.u8
