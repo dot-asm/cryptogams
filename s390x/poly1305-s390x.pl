@@ -57,11 +57,13 @@ poly1305_init:
 	stg	%r0,8($ctx)
 	stg	%r0,16($ctx)
 	st	%r0,24($ctx)		# clear is_base2_26
+	lgr	%r5,$ctx		# reassign $ctx
+	lghi	%r2,0
 
 	cl${g}r	$inp,%r0
 	je	.Lno_key
 
-	lrvg	%r5,0($inp)		# load little-endian key
+	lrvg	%r2,0($inp)		# load little-endian key
 	lrvg	%r3,8($inp)
 
 	nihl	%r1,0xffc0		# 0xffffffc0ffffffff
@@ -69,25 +71,29 @@ poly1305_init:
 	srlg	%r1,%r1,4
 	nill	%r1,0xfffc		# 0x0ffffffc0ffffffc
 
-	ngr	%r5,%r0
+	ngr	%r2,%r0
 	ngr	%r3,%r1
 
-	stg	%r5,32($ctx)
-	stg	%r3,40($ctx)
+	stmg	%r2,%r3,32(%r5)
 
+#ifdef	__KERNEL__
+	lghi	%r2,0
+#else
+	larl	%r1,OPENSSL_s390xcap_P
+	lg	%r0,16(%r1)
+	srlg	%r0,%r0,62
+	nill	%r0,1			# extract vx bit
+	lcgr	%r0,%r0
+	larl	%r1,.Lpoly1305_blocks
+	larl	%r2,.Lpoly1305_blocks_vx
+	larl	%r3,.Lpoly1305_emit
+	x${g}r	%r2,%r1			# select between scalar and vector
+	n${g}r	%r2,%r0
+	x${g}r	%r2,%r1
+	stm${g}	%r2,%r3,0(%r4)
+	lghi	%r2,1
+#endif
 .Lno_key:
-	larl	%r2,OPENSSL_s390xcap_P
-	lg	%r2,16(%r2)
-	srlg	%r2,%r2,62
-	nill	%r2,1			# extract vx bit
-	lcgr	%r0,%r2
-	larl	%r3,.Lpoly1305_blocks_vx
-	larl	%r5,.Lpoly1305_emit
-	ngr	%r3,%r0
-	ngr	%r5,%r0
-	st${g}	%r3,0(%r4)
-	st${g}	%r5,$SIZE_T(%r4)
-
 	br	%r14
 .size	poly1305_init,.-poly1305_init
 ___
@@ -100,6 +106,7 @@ $code.=<<___;
 .type	poly1305_blocks,\@function
 .align	16
 poly1305_blocks:
+.Lpoly1305_blocks:
 	lt${g}r	%r0,$len
 	jz	.Lno_data
 
@@ -108,6 +115,31 @@ poly1305_blocks:
 	lg	$h0,0($ctx)		# load hash value
 	lg	$h1,8($ctx)
 	lg	$h2,16($ctx)
+
+#ifdef	__KERNEL__
+	lt	%r0,24($ctx)		# is_base2_26 zero?
+	jz	.Lpoly1305_blocks_entry
+
+	llgfr	%r0,$h0			# base 2^26 -> base 2^64
+	srlg	$h0,$h0,32
+	llgfr	%r1,$h1
+	srlg	$h1,$h1,32
+	srlg	$h2,$h2,32
+
+	sllg	%r0,%r0,26
+	algr	$h0,%r0
+	sllg	%r0,$h1,52
+	srlg	$h1,$h1,12
+	sllg	%r1,%r1,14
+	algr	$h0,%r0
+	alcgr	$h1,%r1
+	sllg	%r0,$h2,40
+	srlg	$h2,$h2,24
+	lghi	%r1,0
+	algr	$h1,%r0
+	alcgr	$h2,%r1
+	st	%r1,24($ctx)		# clear is_base2_26
+#endif
 
 .Lpoly1305_blocks_entry:
 	srl${g}	$len,4			# fixed-up in 64-bit build
