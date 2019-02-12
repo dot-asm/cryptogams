@@ -110,8 +110,35 @@ poly1305_blocks:
 
 	ldp	$h0,$h1,[$ctx]		// load hash value
 	ldp	$r0,$r1,[$ctx,#32]	// load key value
-	ldr	$h2,[$ctx,#16]
+	ldp	$h2,$d2,[$ctx,#16]
 	add	$s1,$r1,$r1,lsr#2	// s1 = r1 + (r1 >> 2)
+#idef	__KERNEL__
+	cbz	$d2,.Loop
+
+#ifdef	__AARCH64EB__
+	lsr	$d0,$h0,#32
+	mov	w#$d1,w#$h0
+	lsr	$d2,$h1,#32
+	mov	w15,w#$h1
+	lsr	x16,$h2,#32
+#else
+	mov	w#$d0,w#$h0
+	lsr	$d1,$h0,#32
+	mov	w#$d2,w#$h1
+	lsr	x15,$h1,#32
+	mov	w16,w#$h2
+#endif
+
+	add	$d0,$d0,$d1,lsl#26	// base 2^26 -> base 2^64
+	lsr	$d1,$d2,#12
+	adds	$h0,$d0,$d2,lsl#52
+	add	$d1,$d1,x15,lsl#14
+	adc	$d1,$d1,xzr
+	lsr	$d2,x16,#24
+	adds	$h1,$d1,x16,lsl#40
+	str	xzr,[$ctx,#24]		// clear is_Base2_26
+	adc	$h2,$d2,xzr
+#endif
 	b	.Loop
 
 .align	5
