@@ -15,10 +15,9 @@
 #
 # Add a transliteration of VSX code path from chacha20-ppc module.
 # It minimizes reloads from memory, which seems to help under load, as
-# it's more "cooperative" in a sense. Somehow it also helps [at least
-# z13] to arrange instructions in VX_lane_ROUND is "latency-hostile"
-# manner, i.e. as if they have no latency... It's somewhat faster than
-# IBM submission, I measure ~10%, and >3 faster than scalar code.
+# it's more "cooperative" in a sense. Then a "horizontal" round was
+# "braided in" to compensate for higher VX instruction latency. It's
+# ~25% faster than IBM submission and >3 faster than scalar code.
 #
 # NB, compile with additional -Wa,-march=z13.
 
@@ -330,9 +329,7 @@ my $CTR = "%v26";
 my ($xt0,$xt1,$xt2,$xt3) = map("%v$_",(27..30));
 my $beperm = "%v31";
 
-my ($x00,$x10,$x20,$x30) = (0, map("r$_",(8..10)));
-
-my $FRAME=$stdframe+4*16;
+my $FRAME=$stdframe + 4*16 + ($flavour =~ /64/? 8*8 : 0);
 
 sub VX_lane_ROUND {
 my ($a0,$b0,$c0,$d0)=@_;
@@ -340,59 +337,76 @@ my ($a1,$b1,$c1,$d1)=map(($_&~3)+(($_+1)&3),($a0,$b0,$c0,$d0));
 my ($a2,$b2,$c2,$d2)=map(($_&~3)+(($_+1)&3),($a1,$b1,$c1,$d1));
 my ($a3,$b3,$c3,$d3)=map(($_&~3)+(($_+1)&3),($a2,$b2,$c2,$d2));
 my @x=map("\"%v$_\"",(0..15));
+my ($a4,$b4,$c4,$d4)=map("\"$_\"",($xt0,$xt1,$xt2,$xt3));
+my $odd = ($b0 & 1);
 
 	(
-	"&vaf		(@x[$a0],@x[$a0],@x[$b0])",	# Q1
-	"&vx		(@x[$d0],@x[$d0],@x[$a0])",
-	"&verllf	(@x[$d0],@x[$d0],16)",
-	 "&vaf		(@x[$a1],@x[$a1],@x[$b1])",	# Q2
-	 "&vx		(@x[$d1],@x[$d1],@x[$a1])",
-	 "&verllf	(@x[$d1],@x[$d1],16)",
-	  "&vaf		(@x[$a2],@x[$a2],@x[$b2])",	# Q3
-	  "&vx		(@x[$d2],@x[$d2],@x[$a2])",
-	  "&verllf	(@x[$d2],@x[$d2],16)",
-	   "&vaf	(@x[$a3],@x[$a3],@x[$b3])",	# Q4
-	   "&vx		(@x[$d3],@x[$d3],@x[$a3])",
-	   "&verllf	(@x[$d3],@x[$d3],16)",
+	"&vaf		($a4,$a4,$b4)",			# "horizontal"
+	 "&vaf		(@x[$a0],@x[$a0],@x[$b0])",	# Q1
+	  "&vaf		(@x[$a1],@x[$a1],@x[$b1])",	# Q2
+	   "&vaf	(@x[$a2],@x[$a2],@x[$b2])",	# Q3
+	    "&vaf	(@x[$a3],@x[$a3],@x[$b3])",	# Q4
+	"&vx		($d4,$d4,$a4)",
+	 "&vx		(@x[$d0],@x[$d0],@x[$a0])",
+	  "&vx		(@x[$d1],@x[$d1],@x[$a1])",
+	   "&vx		(@x[$d2],@x[$d2],@x[$a2])",
+	    "&vx	(@x[$d3],@x[$d3],@x[$a3])",
+	"&verllf	($d4,$d4,16)",
+	 "&verllf	(@x[$d0],@x[$d0],16)",
+	  "&verllf	(@x[$d1],@x[$d1],16)",
+	   "&verllf	(@x[$d2],@x[$d2],16)",
+	    "&verllf	(@x[$d3],@x[$d3],16)",
 
-	"&vaf		(@x[$c0],@x[$c0],@x[$d0])",
-	"&vx		(@x[$b0],@x[$b0],@x[$c0])",
-	"&verllf	(@x[$b0],@x[$b0],12)",
-	 "&vaf		(@x[$c1],@x[$c1],@x[$d1])",
-	 "&vx		(@x[$b1],@x[$b1],@x[$c1])",
-	 "&verllf	(@x[$b1],@x[$b1],12)",
-	  "&vaf		(@x[$c2],@x[$c2],@x[$d2])",
-	  "&vx		(@x[$b2],@x[$b2],@x[$c2])",
-	  "&verllf	(@x[$b2],@x[$b2],12)",
-	   "&vaf	(@x[$c3],@x[$c3],@x[$d3])",
-	   "&vx		(@x[$b3],@x[$b3],@x[$c3])",
-	   "&verllf	(@x[$b3],@x[$b3],12)",
+	"&vaf		($c4,$c4,$d4)",
+	 "&vaf		(@x[$c0],@x[$c0],@x[$d0])",
+	  "&vaf		(@x[$c1],@x[$c1],@x[$d1])",
+	   "&vaf	(@x[$c2],@x[$c2],@x[$d2])",
+	    "&vaf	(@x[$c3],@x[$c3],@x[$d3])",
+	"&vx		($b4,$b4,$c4)",
+	 "&vx		(@x[$b0],@x[$b0],@x[$c0])",
+	  "&vx		(@x[$b1],@x[$b1],@x[$c1])",
+	   "&vx		(@x[$b2],@x[$b2],@x[$c2])",
+	    "&vx	(@x[$b3],@x[$b3],@x[$c3])",
+	"&verllf	($b4,$b4,12)",
+	 "&verllf	(@x[$b0],@x[$b0],12)",
+	  "&verllf	(@x[$b1],@x[$b1],12)",
+	   "&verllf	(@x[$b2],@x[$b2],12)",
+	    "&verllf	(@x[$b3],@x[$b3],12)",
 
-	"&vaf		(@x[$a0],@x[$a0],@x[$b0])",
-	"&vx		(@x[$d0],@x[$d0],@x[$a0])",
-	"&verllf	(@x[$d0],@x[$d0],8)",
-	 "&vaf		(@x[$a1],@x[$a1],@x[$b1])",
-	 "&vx		(@x[$d1],@x[$d1],@x[$a1])",
-	 "&verllf	(@x[$d1],@x[$d1],8)",
-	  "&vaf		(@x[$a2],@x[$a2],@x[$b2])",
-	  "&vx		(@x[$d2],@x[$d2],@x[$a2])",
-	  "&verllf	(@x[$d2],@x[$d2],8)",
-	   "&vaf	(@x[$a3],@x[$a3],@x[$b3])",
-	   "&vx		(@x[$d3],@x[$d3],@x[$a3])",
-	   "&verllf	(@x[$d3],@x[$d3],8)",
+	"&vaf		($a4,$a4,$b4)",
+	 "&vaf		(@x[$a0],@x[$a0],@x[$b0])",
+	  "&vaf		(@x[$a1],@x[$a1],@x[$b1])",
+	   "&vaf	(@x[$a2],@x[$a2],@x[$b2])",
+	    "&vaf	(@x[$a3],@x[$a3],@x[$b3])",
+	"&vx		($d4,$d4,$a4)",
+	 "&vx		(@x[$d0],@x[$d0],@x[$a0])",
+	  "&vx		(@x[$d1],@x[$d1],@x[$a1])",
+	   "&vx		(@x[$d2],@x[$d2],@x[$a2])",
+	    "&vx	(@x[$d3],@x[$d3],@x[$a3])",
+	"&verllf	($d4,$d4,8)",
+	 "&verllf	(@x[$d0],@x[$d0],8)",
+	  "&verllf	(@x[$d1],@x[$d1],8)",
+	   "&verllf	(@x[$d2],@x[$d2],8)",
+	    "&verllf	(@x[$d3],@x[$d3],8)",
 
-	"&vaf		(@x[$c0],@x[$c0],@x[$d0])",
-	"&vx		(@x[$b0],@x[$b0],@x[$c0])",
-	"&verllf	(@x[$b0],@x[$b0],7)",
-	 "&vaf		(@x[$c1],@x[$c1],@x[$d1])",
-	 "&vx		(@x[$b1],@x[$b1],@x[$c1])",
-	 "&verllf	(@x[$b1],@x[$b1],7)",
-	  "&vaf		(@x[$c2],@x[$c2],@x[$d2])",
-	  "&vx		(@x[$b2],@x[$b2],@x[$c2])",
-	  "&verllf	(@x[$b2],@x[$b2],7)",
-	   "&vaf	(@x[$c3],@x[$c3],@x[$d3])",
-	   "&vx		(@x[$b3],@x[$b3],@x[$c3])",
-	   "&verllf	(@x[$b3],@x[$b3],7)"
+	"&vaf		($c4,$c4,$d4)",
+	 "&vaf		(@x[$c0],@x[$c0],@x[$d0])",
+	  "&vaf		(@x[$c1],@x[$c1],@x[$d1])",
+	   "&vaf	(@x[$c2],@x[$c2],@x[$d2])",
+	    "&vaf	(@x[$c3],@x[$c3],@x[$d3])",
+	"&vx		($b4,$b4,$c4)",
+	"&vsldb		($c4,$c4,$c4,8)",
+	 "&vx		(@x[$b0],@x[$b0],@x[$c0])",
+	  "&vx		(@x[$b1],@x[$b1],@x[$c1])",
+	   "&vx		(@x[$b2],@x[$b2],@x[$c2])",
+	    "&vx	(@x[$b3],@x[$b3],@x[$c3])",
+	"&verllf	($b4,$b4,7)",
+	"&vsldb		($b4,$b4,$b4,$odd ? 12 : 4)",
+	 "&verllf	(@x[$b0],@x[$b0],7)",
+	  "&verllf	(@x[$b1],@x[$b1],7)",
+	   "&verllf	(@x[$b2],@x[$b2],7)",
+	    "&verllf	(@x[$b3],@x[$b3],7)",
+	"&vsldb		($d4,$d4,$d4,$odd ? 4 : 12)"
 	);
 }
 
@@ -414,14 +428,14 @@ $code.=<<___;
 	st${g}	%r0,0($sp)			# back-chain
 ___
 $code.=<<___	if ($flavour =~ /64/);
-	std	%f8,`$stdframe+8*0`($sp)
-	std	%f9,`$stdframe+8*1`($sp)
-	std	%f10,`$stdframe+8*2`($sp)
-	std	%f11,`$stdframe+8*3`($sp)
-	std	%f12,`$stdframe+8*4`($sp)
-	std	%f13,`$stdframe+8*5`($sp)
-	std	%f14,`$stdframe+8*6`($sp)
-	std	%f15,`$stdframe+8*7`($sp)
+	std	%f8,`$FRAME-8*8`($sp)
+	std	%f9,`$FRAME-8*7`($sp)
+	std	%f10,`$FRAME-8*6`($sp)
+	std	%f11,`$FRAME-8*5`($sp)
+	std	%f12,`$FRAME-8*4`($sp)
+	std	%f13,`$FRAME-8*3`($sp)
+	std	%f14,`$FRAME-8*2`($sp)
+	std	%f15,`$FRAME-8*1`($sp)
 ___
 $code.=<<___;
 	larl	%r7,.Lsigma
@@ -431,33 +445,38 @@ $code.=<<___;
 	vl	@K[2],16($key)
 	vl	@K[3],0($counter)		# load counter
 
-	vzero	$xt0
 	vl	$xt1,0x50(%r7)
+	vl	$beperm,0x60(%r7)
 	vrepf	$CTR,@K[3],0
-	vsldb	@K[3],@K[3],$xt0,4
-	vsldb	@K[3],$xt0,@K[3],12		# clear @K[3].word[0]
 	vaf	$CTR,$CTR,$xt1
 
-	vl	$beperm,0x60(%r7)
+	llgf	$counter,0($counter)
+	ahi	$counter,4
+	lghi	%r1,0
 	lhi	%r0,10
 
 .Loop_outer_vx:
 	vlm	$xa0,$xa3,0x10(%r7)		# load [smashed] sigma
+	vlr	$xt0,@K[0]
+	vlvgf	@K[3],$counter,0
 
 	vrepf	$xb0,@K[1],0			# smash the key
 	vrepf	$xb1,@K[1],1
 	vrepf	$xb2,@K[1],2
 	vrepf	$xb3,@K[1],3
+	vlr	$xt1,@K[1]
 
 	vrepf	$xc0,@K[2],0
 	vrepf	$xc1,@K[2],1
 	vrepf	$xc2,@K[2],2
 	vrepf	$xc3,@K[2],3
+	vlr	$xt2,@K[2]
 
 	vlr	$xd0,$CTR
 	vrepf	$xd1,@K[3],1
 	vrepf	$xd2,@K[3],2
 	vrepf	$xd3,@K[3],3
+	vlr	$xt3,@K[3]
 
 .Loop_vx:
 ___
@@ -466,7 +485,13 @@ ___
 $code.=<<___;
 	brct	%r0,.Loop_vx
 
+	vaf	$xt0,$xt0,@K[0]
+	vaf	$xt1,$xt1,@K[1]
+	vaf	$xt2,$xt2,@K[2]
+	vaf	$xt3,$xt3,@K[3]
 	vaf	$xd0,$xd0,$CTR
+
+	vstm	$xt0,$xt3,$stdframe($sp)	# offload "horizontal" round
 
 	vmrhf	$xt0,$xa0,$xa1			# transpose data
 	vmrhf	$xt1,$xa2,$xa3
@@ -504,7 +529,8 @@ $code.=<<___;
 	vpdi	$xd2,$xt2,$xt3,0b0000
 	vpdi	$xd3,$xt2,$xt3,0b0101
 
-	vrepif	$xt0,4
+	vrepif	$xt0,5
+	vlvgf	@K[3],%r1,0			# clear @K[3].word[0]
 	vaf	$CTR,$CTR,$xt0			# next counter value
 
 	vaf	$xa0,$xa0,@K[0]
@@ -612,6 +638,31 @@ $code.=<<___;
 
 	la	$inp,0x40($inp)
 	la	$out,0x40($out)
+	a${g}hi	$len,-0x40
+	je	.Ldone_vx
+
+	vlm	$xt0,$xt3,$stdframe($sp)
+
+	vperm	$xa0,$xt0,$xt0,$beperm
+	vperm	$xb0,$xt1,$xt1,$beperm
+	vperm	$xc0,$xt2,$xt2,$beperm
+	vperm	$xd0,$xt3,$xt3,$beperm
+
+	ahi	$counter,5
+	cl${g}fi $len,0x40
+	jl	.Ltail_vx
+
+	vlm	$xt0,$xt3,0($inp)
+
+	vx	$xt0,$xt0,$xa0
+	vx	$xt1,$xt1,$xb0
+	vx	$xt2,$xt2,$xc0
+	vx	$xt3,$xt3,$xd0
+
+	vstm	$xt0,$xt3,0($out)
+
+	la	$inp,0x40($inp)
+	la	$out,0x40($out)
 	lhi	%r0,10
 	a${g}hi	$len,-0x40
 	jne	.Loop_outer_vx
@@ -623,14 +674,14 @@ $code.=<<___	if ($flavour !~ /64/);
 	ld	%f6,`$FRAME+16*$SIZE_T+3*8`($sp)
 ___
 $code.=<<___	if ($flavour =~ /64/);
-	ld	%f8,`$stdframe+8*0`($sp)
-	ld	%f9,`$stdframe+8*1`($sp)
-	ld	%f10,`$stdframe+8*2`($sp)
-	ld	%f11,`$stdframe+8*3`($sp)
-	ld	%f12,`$stdframe+8*4`($sp)
-	ld	%f13,`$stdframe+8*5`($sp)
-	ld	%f14,`$stdframe+8*6`($sp)
-	ld	%f15,`$stdframe+8*7`($sp)
+	ld	%f8,`$FRAME-8*8`($sp)
+	ld	%f9,`$FRAME-8*7`($sp)
+	ld	%f10,`$FRAME-8*6`($sp)
+	ld	%f11,`$FRAME-8*5`($sp)
+	ld	%f12,`$FRAME-8*4`($sp)
+	ld	%f13,`$FRAME-8*3`($sp)
+	ld	%f14,`$FRAME-8*2`($sp)
+	ld	%f15,`$FRAME-8*1`($sp)
 ___
 $code.=<<___;
 	lm${g}	%r6,%r7,`$FRAME+6*$SIZE_T`($sp)
@@ -652,15 +703,15 @@ $code.=<<___	if ($flavour !~ /64/);
 ___
 $code.=<<___	if ($flavour =~ /64/);
 	vlr	$xt0,$xc0
-	ld	%f8,`$stdframe+8*0`($sp)
-	ld	%f9,`$stdframe+8*1`($sp)
-	ld	%f10,`$stdframe+8*2`($sp)
-	ld	%f11,`$stdframe+8*3`($sp)
+	ld	%f8,`$FRAME-8*8`($sp)
+	ld	%f9,`$FRAME-8*7`($sp)
+	ld	%f10,`$FRAME-8*6`($sp)
+	ld	%f11,`$FRAME-8*5`($sp)
 	vlr	$xt1,$xd0
-	ld	%f12,`$stdframe+8*4`($sp)
-	ld	%f13,`$stdframe+8*5`($sp)
-	ld	%f14,`$stdframe+8*6`($sp)
-	ld	%f15,`$stdframe+8*7`($sp)
+	ld	%f12,`$FRAME-8*4`($sp)
+	ld	%f13,`$FRAME-8*3`($sp)
+	ld	%f14,`$FRAME-8*2`($sp)
+	ld	%f15,`$FRAME-8*1`($sp)
 
 	vst	$xa0,`$stdframe+0x00`($sp)
 	vst	$xb0,`$stdframe+0x10`($sp)
