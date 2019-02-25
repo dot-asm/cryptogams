@@ -156,7 +156,7 @@ ChaCha20_ctr32:
 	jle	.Lshort
 
 	tmhh	%r1,0x4000			# check for vx bit
-	jnz	.LChaCha20_ctr32_4x
+	jnz	.LChaCha20_ctr32_vx
 
 .Lshort:
 	a${g}hi	$len,-64
@@ -321,6 +321,13 @@ $code.=<<___;
 .size	ChaCha20_ctr32,.-ChaCha20_ctr32
 ___
 {{{
+########################################################################
+# 4x"vertical" layout minimizes amount of instructions, but pipeline
+# runs underutilized [because of vector instructions' high latency].
+# On the other hand minimum amount of data it takes to fully utilize
+# the pipeline is higher, so that effectively, short inputs would be
+# processed slower. Hence this code path targeting <=256 bytes lengths.
+#
 my ($xa0,$xa1,$xa2,$xa3, $xb0,$xb1,$xb2,$xb3,
     $xc0,$xc1,$xc2,$xc3, $xd0,$xd1,$xd2,$xd3) = map("%v$_",(0..15));
 my @K = map("%v$_",(16..19));
@@ -395,12 +402,9 @@ my @x=map("\"%v$_\"",(0..15));
 }
 
 $code.=<<___;
-.globl	ChaCha20_ctr32_4x
 .align	32
 ChaCha20_ctr32_4x:
 .LChaCha20_ctr32_4x:
-	cl${g}fi $len,256
-	jh	.LChaCha20_ctr32_vx
 	stm${g}	%r6,%r7,`6*$SIZE_T`($sp)
 ___
 $code.=<<___	if ($flavour !~ /64/);
@@ -683,6 +687,12 @@ $code.=<<___;
 ___
 }}}
 {{{
+########################################################################
+# 6x"horizontal" layout is optimal fit for the platform in its current
+# shape, more specifically for given vector instructions' latency. Well,
+# computational part of 8x"vertical" would be faster, but it consumes
+# all registers and dealing with that will diminish the return...
+#
 my ($a0,$b0,$c0,$d0, $a1,$b1,$c1,$d1,
     $a2,$b2,$c2,$d2, $a3,$b3,$c3,$d3,
     $a4,$b4,$c4,$d4, $a5,$b5,$c5,$d5) = map("%v$_",(0..23));
@@ -723,6 +733,8 @@ $code.=<<___;
 .align	32
 ChaCha20_ctr32_vx:
 .LChaCha20_ctr32_vx:
+	cl${g}fi $len,256
+	jle	.LChaCha20_ctr32_4x
 	stm${g}	%r6,%r7,`6*$SIZE_T`($sp)
 ___
 $code.=<<___	if ($flavour !~ /64/);
