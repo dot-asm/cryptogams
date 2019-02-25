@@ -13,10 +13,11 @@
 #
 # February 2019
 #
-# Add 6x"horizontal" VX implementation. It's ~25% faster than IBM
-# 4x"vertival" submission and >3 faster than scalar code. But use
-# transliteration of VSX code path from chacha-ppc module, which is
-# 4x"vertical", to handle length up to 256 bytes.
+# Add 6x"horizontal" VX implementation. It's ~25% faster than IBM's
+# 4x"vertical" submission [on z13] and >3 faster than scalar code.
+# But to harness overheads revert to transliteration of VSX code path
+# from chacha-ppc module, which is also 4x"vertical", to handle inputs
+# not longer than 256 bytes.
 #
 # NB, compile with additional -Wa,-march=z13.
 
@@ -147,6 +148,7 @@ $code.=<<___;
 .type	ChaCha20_ctr32,\@function
 .align	32
 ChaCha20_ctr32:
+#ifndef	__KERNEL__
 	larl	%r1,OPENSSL_s390xcap_P
 	lghi	%r0,64
 	lt${g}r	$len,$len			# $len==0?
@@ -159,6 +161,7 @@ ChaCha20_ctr32:
 	jnz	.LChaCha20_ctr32_vx
 
 .Lshort:
+#endif
 	a${g}hi	$len,-64
 	l${g}hi	%r1,-$frame
 	stm${g}	%r6,%r15,`6*$SIZE_T`($sp)
