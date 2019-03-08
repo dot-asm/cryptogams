@@ -783,6 +783,7 @@ iotas:
 	.dword	0x8000000000008080
 	.dword	0x0000000080000001
 	.dword	0x8000000080008008
+.string	"Keccak-1600 absorb and squeeze for RISC-V, CRYPTOGAMS by \@dot-asm"
 ___
 }}} else {{{
 ######################################################################
@@ -1922,6 +1923,7 @@ iotas:
 	.word	0x00000000, 0x80000088
 	.word	0x00000001, 0x00008000
 	.word	0x00000000, 0x80008082
+.string	"Keccak-1600 absorb and squeeze for RISC-V, CRYPTOGAMS by \@dot-asm"
 ___
 }}}
 
