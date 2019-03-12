@@ -9,11 +9,12 @@
 # March 2019.
 #
 # Even though compiler seems to generate optimal rounds loop, same as
-# ROUNDs below, it somehow screws up the outer loop, as hand-coded one
-# runs ~2x faster...
+# ROUNDs below, it somehow screws up the outer loop...
 #
-# R1x000	15.5/?
-# Octeon II	10.5/+45%
+# R1x000	15.5/?		(big-endian)
+# Octeon II	9.2(*)/+65%	(little-endian)
+#
+# (*)	aligned intput and output, result for misaligned is 10.7;
 #
 ######################################################################
 # There is a number of MIPS ABI in use, O32 and N32/64 are most
@@ -66,7 +67,7 @@ $SAVED_REGS_MASK = ($flavour =~ /nubi/i) ? "0xc0fff008" : "0xc0ff0000";
 ######################################################################
 
 my @x = map("\$$_",(10..25));
-my @y = map("\$$_",(2,3,7..9,1,30));
+my @y = map("\$$_",(2,3,7..9,1,31));
 my ($out, $inp, $len, $key, $counter) = ($a0,$a1,$a2,$a3,$a4);
 
 sub ROUND {
@@ -212,6 +213,82 @@ $code.=<<___;
 .set	noat
 .set	reorder
 
+.align	5
+.ent	__ChaCha
+__ChaCha:
+	.frame	$sp,0,$ra
+	.mask	0,0
+	.set	reorder
+	lw		@x[0], 4*0($sp)
+	lw		@x[1], 4*1($sp)
+	lw		@x[2], 4*2($sp)
+	lw		@x[3], 4*3($sp)
+	lw		@x[4], 4*4($sp)
+	lw		@x[5], 4*5($sp)
+	lw		@x[6], 4*6($sp)
+	lw		@x[7], 4*7($sp)
+	lw		@x[8], 4*8($sp)
+	lw		@x[9], 4*9($sp)
+	lw		@x[10],4*10($sp)
+	lw		@x[11],4*11($sp)
+	move		@x[12],$fp
+	lw		@x[13],4*13($sp)
+	lw		@x[14],4*14($sp)
+	lw		@x[15],4*15($sp)
+.Lalt_entry:
+#if defined(_MIPS_ARCH_MIPS32R2) || defined(_MIPS_ARCH_MIPS64R2)
+	move		@y[0],@x[0]
+	move		@y[1],@x[1]
+	move		@y[2],@x[2]
+	move		@y[3],@x[3]
+#endif
+.Loop:
+___
+	&ROUND(0, 4, 8, 12);
+	&ROUND(0, 5, 10, 15);
+$code.=<<___;
+	.set		noreorder
+	bnez		$at,.Loop
+	subu		$at,$at,1
+	.set		reorder
+
+#if !defined(_MIPS_ARCH_MIPS32R2) && !defined(_MIPS_ARCH_MIPS64R2)
+	lw		@y[0], 4*0($sp)
+	lw		@y[1], 4*1($sp)
+	lw		@y[2], 4*2($sp)
+	lw		@y[3], 4*3($sp)
+#endif
+	addu		@x[0],@x[0],@y[0]
+	lw		@y[0],4*4($sp)
+	addu		@x[1],@x[1],@y[1]
+	lw		@y[1],4*5($sp)
+	addu		@x[2],@x[2],@y[2]
+	lw		@y[2],4*6($sp)
+	addu		@x[3],@x[3],@y[3]
+	lw		@y[3],4*7($sp)
+	addu		@x[4],@x[4],@y[0]
+	lw		@y[0],4*8($sp)
+	addu		@x[5],@x[5],@y[1]
+	lw		@y[1], 4*9($sp)
+	addu		@x[6],@x[6],@y[2]
+	lw		@y[2],4*10($sp)
+	addu		@x[7],@x[7],@y[3]
+	lw		@y[3],4*11($sp)
+	addu		@x[8],@x[8],@y[0]
+	#lw		@y[0],4*12($sp)
+	addu		@x[9],@x[9],@y[1]
+	lw		@y[1],4*13($sp)
+	addu		@x[10],@x[10],@y[2]
+	lw		@y[2],4*14($sp)
+	addu		@x[11],@x[11],@y[3]
+	lw		@y[3],4*15($sp)
+	addu		@x[12],@x[12],$fp
+	addu		@x[13],@x[13],@y[1]
+	addu		@x[14],@x[14],@y[2]
+	addu		@x[15],@x[15],@y[3]
+	jr		$ra
+.end	__ChaCha
+
 .globl	ChaCha20_ctr32
 .align	5
 .ent	ChaCha20_ctr32
@@ -279,65 +356,23 @@ $code.=<<___;
 	sw		@x[9], 4*9($sp)
 	sw		@x[10],4*10($sp)
 	sw		@x[11],4*11($sp)
-	move		$ra,@x[12]
+	move		$fp,@x[12]
 	sw		@x[13],4*13($sp)
 	sw		@x[14],4*14($sp)
 	sw		@x[15],4*15($sp)
-#if defined(_MIPS_ARCH_MIPS32R2) || defined(_MIPS_ARCH_MIPS64R2)
-	move		@y[0],@x[0]
-	move		@y[1],@x[1]
-	move		@y[2],@x[2]
-	move		@y[3],@x[3]
-#endif
+
 	li		$at,9
+	bal		.Lalt_entry
 
-.Loop:
-___
-	&ROUND(0, 4, 8, 12);
-	&ROUND(0, 5, 10, 15);
-$code.=<<___;
-	.set		noreorder
-	bnez		$at,.Loop
-	subu		$at,$at,1
-	.set		reorder
-
-#if !defined(_MIPS_ARCH_MIPS32R2) && !defined(_MIPS_ARCH_MIPS64R2)
-	lw		@y[0], 4*0($sp)
-	lw		@y[1], 4*1($sp)
-	lw		@y[2], 4*2($sp)
-	lw		@y[3], 4*3($sp)
-#endif
 	sltiu		$at,$len,64
-	addu		@x[0],@x[0],@y[0]
-	lw		@y[0],4*4($sp)
-	addu		@x[1],@x[1],@y[1]
-	lw		@y[1],4*5($sp)
-	addu		@x[2],@x[2],@y[2]
-	lw		@y[2],4*6($sp)
-	addu		@x[3],@x[3],@y[3]
-	lw		@y[3],4*7($sp)
-	addu		@x[4],@x[4],@y[0]
-	lw		@y[0],4*8($sp)
-	addu		@x[5],@x[5],@y[1]
-	lw		@y[1], 4*9($sp)
-	addu		@x[6],@x[6],@y[2]
-	lw		@y[2],4*10($sp)
-	addu		@x[7],@x[7],@y[3]
-	lw		@y[3],4*11($sp)
-	addu		@x[8],@x[8],@y[0]
-	#lw		@y[0],4*12($sp)
-	addu		@x[9],@x[9],@y[1]
-	lw		@y[1],4*13($sp)
-	addu		@x[10],@x[10],@y[2]
-	lw		@y[2],4*14($sp)
-	addu		@x[11],@x[11],@y[3]
-	lw		@y[3],4*15($sp)
-	addu		@x[12],@x[12],$ra
-	addu		@x[13],@x[13],@y[1]
-	addu		@x[14],@x[14],@y[2]
-	addu		@x[15],@x[15],@y[3]
+	or		$ra,$inp,$out
+	andi		$ra,$ra,3		# both are aligned?
 	bnez		$at,.Ltail
 
+#ifndef	MIPSEB
+	beqz		$ra,.Loop_aligned
+#endif
+.Loop_misaligned:
 	# On little-endian pre-R6 processor it's possible to reduce
 	# amount of instructions by using lwl+lwr to load input, and
 	# single 'xor' per word. Judging from sheer instruction count
@@ -379,7 +414,7 @@ $code.=<<___;
 	xor		@y[5],@y[5],@y[2]
 	xor		@y[6],@y[6],@y[3]
 	sb		@x[15],60($out)
-	addu		$ra,$ra,1		# next counter value
+	addu		$fp,$fp,1		# next counter value
 	sb		@y[4],61($out)
 	$PTR_SUB	$len,$len,64
 	sb		@y[5],62($out)
@@ -388,34 +423,63 @@ $code.=<<___;
 	$PTR_ADD	$out,$out,64
 	beqz		$len,.Ldone
 
-	lw		@x[0], 4*0($sp)
-	lw		@x[1], 4*1($sp)
-	lw		@x[2], 4*2($sp)
-	lw		@x[3], 4*3($sp)
-	lw		@x[4], 4*4($sp)
-	lw		@x[5], 4*5($sp)
-	lw		@x[6], 4*6($sp)
-	lw		@x[7], 4*7($sp)
-	lw		@x[8], 4*8($sp)
-	lw		@x[9], 4*9($sp)
-	lw		@x[10],4*10($sp)
-	lw		@x[11],4*11($sp)
-	move		@x[12],$ra
-	lw		@x[13],4*13($sp)
-	lw		@x[14],4*14($sp)
-	lw		@x[15],4*15($sp)
-#if defined(_MIPS_ARCH_MIPS32R2) || defined(_MIPS_ARCH_MIPS64R2)
-	move		@y[0],@x[0]
-	move		@y[1],@x[1]
-	move		@y[2],@x[2]
-	move		@y[3],@x[3]
-#endif
+	sltiu		@y[4],$len,64
 	li		$at,9
-	b		.Loop
+	bal		__ChaCha
+
+	beqz		@y[4],.Loop_misaligned
+
+#ifndef	MIPSEB
+	b		.Ltail
 
 .align	4
+.Loop_aligned:
+	lw		@y[0],0($inp)
+	lw		@y[1],4($inp)
+	lw		@y[2],8($inp)
+	lw		@y[3],12($inp)
+___
+for (my $i=0; $i<12; $i+=4) {
+my $j = 4*$i;
+my $k = 4*($i+4);
+$code.=<<___;
+	xor		@x[$i+0],@x[$i+0],@y[0]
+	lw		@y[0],$k+0($inp)
+	xor		@x[$i+1],@x[$i+1],@y[1]
+	lw		@y[1],$k+4($inp)
+	xor		@x[$i+2],@x[$i+2],@y[2]
+	lw		@y[2],$k+8($inp)
+	xor		@x[$i+3],@x[$i+3],@y[3]
+	lw		@y[3],$k+12($inp)
+	sw		@x[$i+0],$j+0($out)
+	sw		@x[$i+1],$j+4($out)
+	sw		@x[$i+2],$j+8($out)
+	sw		@x[$i+3],$j+12($out)
+___
+}
+$code.=<<___;
+	xor		@x[12],@x[12],@y[0]
+	xor		@x[13],@x[13],@y[1]
+	xor		@x[14],@x[14],@y[2]
+	xor		@x[15],@x[15],@y[3]
+	sw		@x[12],48($out)
+	addu		$fp,$fp,1		# next counter value
+	sw		@x[13],52($out)
+	$PTR_SUB	$len,$len,64
+	sw		@x[14],56($out)
+	$PTR_ADD	$inp,$inp,64
+	sw		@x[15],60($out)
+	$PTR_ADD	$out,$out,64
+	sltiu		@y[4],$len,64
+	beqz		$len,.Ldone
+
+	li		$at,9
+	bal		__ChaCha
+
+	beqz		@y[4],.Loop_aligned
+#endif
 .Ltail:
-	move		$ra,$sp
+	move		$fp,$sp
 	sw		@x[1], 4*1($sp)
 	sw		@x[2], 4*2($sp)
 	sw		@x[3], 4*3($sp)
@@ -434,7 +498,7 @@ $code.=<<___;
 
 .Loop_tail:
 	sltiu		$at,$len,4
-	$PTR_ADD	$ra,$ra,4
+	$PTR_ADD	$fp,$fp,4
 	bnez		$at,.Last_word
 
 	lbu		@y[0],0($inp)
@@ -450,7 +514,7 @@ $code.=<<___;
 	xor		@y[2],@y[2],@x[0]
 	srl		@x[0],@x[0],8
 	xor		@y[3],@y[3],@x[0]
-	lw		@x[0],0($ra)
+	lw		@x[0],0($fp)
 	sb		@y[0],0($out)
 	sb		@y[1],1($out)
 	sb		@y[2],2($out)
