@@ -38,7 +38,7 @@ $SAVED_REGS_MASK = ($flavour =~ /nubi/i) ? "0xc0fff008" : "0xc0ff0000";
 ######################################################################
 
 my @x = map("x$_",(16..31));
-my @y = map("x$_",(5..9,14,15));
+my @y = map("x$_",(5..9,13,14));
 my $at = @y[-1];
 my ($out, $inp, $len, $key, $counter) = ($a0,$a1,$a2,$a3,$a4);
 
@@ -138,6 +138,67 @@ ___
 $code.=<<___;
 .text
 
+.type	__ChaCha,\@function
+__ChaCha:
+	lw		@x[0], 4*0($sp)
+	lw		@x[1], 4*1($sp)
+	lw		@x[2], 4*2($sp)
+	lw		@x[3], 4*3($sp)
+	lw		@x[4], 4*4($sp)
+	lw		@x[5], 4*5($sp)
+	lw		@x[6], 4*6($sp)
+	lw		@x[7], 4*7($sp)
+	lw		@x[8], 4*8($sp)
+	lw		@x[9], 4*9($sp)
+	lw		@x[10],4*10($sp)
+	lw		@x[11],4*11($sp)
+	mv		@x[12],$a5
+	lw		@x[13],4*13($sp)
+	lw		@x[14],4*14($sp)
+	lw		@x[15],4*15($sp)
+.Loop:
+	addi		$at,$at,-1
+___
+	&ROUND(0, 4, 8, 12);
+	&ROUND(0, 5, 10, 15);
+$code.=<<___;
+	bnez		$at,.Loop
+
+	lw		@y[0], 4*0($sp)
+	lw		@y[1], 4*1($sp)
+	lw		@y[2], 4*2($sp)
+	lw		@y[3], 4*3($sp)
+	add		@x[0],@x[0],@y[0]
+	lw		@y[0],4*4($sp)
+	add		@x[1],@x[1],@y[1]
+	lw		@y[1],4*5($sp)
+	add		@x[2],@x[2],@y[2]
+	lw		@y[2],4*6($sp)
+	add		@x[3],@x[3],@y[3]
+	lw		@y[3],4*7($sp)
+	add		@x[4],@x[4],@y[0]
+	lw		@y[0],4*8($sp)
+	add		@x[5],@x[5],@y[1]
+	lw		@y[1], 4*9($sp)
+	add		@x[6],@x[6],@y[2]
+	lw		@y[2],4*10($sp)
+	add		@x[7],@x[7],@y[3]
+	lw		@y[3],4*11($sp)
+	add		@x[8],@x[8],@y[0]
+	#lw		@y[0],4*12($sp)
+	add		@x[9],@x[9],@y[1]
+	lw		@y[1],4*13($sp)
+	add		@x[10],@x[10],@y[2]
+	lw		@y[2],4*14($sp)
+	add		@x[11],@x[11],@y[3]
+	lw		@y[3],4*15($sp)
+	add		@x[12],@x[12],$a5
+	add		@x[13],@x[13],@y[1]
+	add		@x[14],@x[14],@y[2]
+	add		@x[15],@x[15],@y[3]
+	jr		$ra
+.size	__ChaCha,.-__ChaCha
+
 .globl	ChaCha20_ctr32
 .type	ChaCha20_ctr32,\@function
 ChaCha20_ctr32:
@@ -191,55 +252,22 @@ ChaCha20_ctr32:
 	sw		@x[9], 4*9($sp)
 	sw		@x[10],4*10($sp)
 	sw		@x[11],4*11($sp)
-	mv		$ra,@x[12]
+	mv		$a5,@x[12]
 	sw		@x[13],4*13($sp)
 	sw		@x[14],4*14($sp)
 	sw		@x[15],4*15($sp)
+
 	li		$at,10
+	jal		.Loop
 
-.Loop:
-	addi		$at,$at,-1
-___
-	&ROUND(0, 4, 8, 12);
-	&ROUND(0, 5, 10, 15);
-$code.=<<___;
-	bnez		$at,.Loop
-
-	lw		@y[0], 4*0($sp)
-	lw		@y[1], 4*1($sp)
-	lw		@y[2], 4*2($sp)
-	lw		@y[3], 4*3($sp)
 	sltiu		$at,$len,64
-	add		@x[0],@x[0],@y[0]
-	lw		@y[0],4*4($sp)
-	add		@x[1],@x[1],@y[1]
-	lw		@y[1],4*5($sp)
-	add		@x[2],@x[2],@y[2]
-	lw		@y[2],4*6($sp)
-	add		@x[3],@x[3],@y[3]
-	lw		@y[3],4*7($sp)
-	add		@x[4],@x[4],@y[0]
-	lw		@y[0],4*8($sp)
-	add		@x[5],@x[5],@y[1]
-	lw		@y[1], 4*9($sp)
-	add		@x[6],@x[6],@y[2]
-	lw		@y[2],4*10($sp)
-	add		@x[7],@x[7],@y[3]
-	lw		@y[3],4*11($sp)
-	add		@x[8],@x[8],@y[0]
-	#lw		@y[0],4*12($sp)
-	add		@x[9],@x[9],@y[1]
-	lw		@y[1],4*13($sp)
-	add		@x[10],@x[10],@y[2]
-	lw		@y[2],4*14($sp)
-	add		@x[11],@x[11],@y[3]
-	lw		@y[3],4*15($sp)
-	add		@x[12],@x[12],$ra
-	add		@x[13],@x[13],@y[1]
-	add		@x[14],@x[14],@y[2]
-	add		@x[15],@x[15],@y[3]
+	or		$ra,$inp,$out
+	andi		$ra,$ra,3		# both are aligned?
 	bnez		$at,.Ltail
 
+	beqz		$ra,.Loop_aligned
+
+.Loop_misaligned:
 	lb		@y[0],0($inp)
 	lb		@y[1],1($inp)
 	srl		@y[4],@x[0],8
@@ -275,7 +303,7 @@ $code.=<<___;
 	xor		@y[5],@y[5],@y[2]
 	xor		@y[6],@y[6],@y[3]
 	sb		@x[15],60($out)
-	addi		$ra,$ra,1		# next counter value
+	addi		$a5,$a5,1		# next counter value
 	sb		@y[4],61($out)
 	addi		$len,$len,-64
 	sb		@y[5],62($out)
@@ -284,24 +312,58 @@ $code.=<<___;
 	addi		$out,$out,64
 	beqz		$len,.Ldone
 
-	lw		@x[0], 4*0($sp)
-	lw		@x[1], 4*1($sp)
-	lw		@x[2], 4*2($sp)
-	lw		@x[3], 4*3($sp)
-	lw		@x[4], 4*4($sp)
-	lw		@x[5], 4*5($sp)
-	lw		@x[6], 4*6($sp)
-	lw		@x[7], 4*7($sp)
-	lw		@x[8], 4*8($sp)
-	lw		@x[9], 4*9($sp)
-	lw		@x[10],4*10($sp)
-	lw		@x[11],4*11($sp)
-	mv		@x[12],$ra
-	lw		@x[13],4*13($sp)
-	lw		@x[14],4*14($sp)
-	lw		@x[15],4*15($sp)
+	sltiu		@y[4],$len,64
 	li		$at,10
-	j		.Loop
+	jal		__ChaCha
+
+	beqz		@y[4],.Loop_misaligned
+
+	j		.Ltail
+
+.Loop_aligned:
+	lw		@y[0],0($inp)
+	lw		@y[1],4($inp)
+	lw		@y[2],8($inp)
+	lw		@y[3],12($inp)
+___
+for (my $i=0; $i<12; $i+=4) {
+my $j = 4*$i;
+my $k = 4*($i+4);
+$code.=<<___;
+	xor		@x[$i+0],@x[$i+0],@y[0]
+	lw		@y[0],$k+0($inp)
+	xor		@x[$i+1],@x[$i+1],@y[1]
+	lw		@y[1],$k+4($inp)
+	xor		@x[$i+2],@x[$i+2],@y[2]
+	lw		@y[2],$k+8($inp)
+	xor		@x[$i+3],@x[$i+3],@y[3]
+	lw		@y[3],$k+12($inp)
+	sw		@x[$i+0],$j+0($out)
+	sw		@x[$i+1],$j+4($out)
+	sw		@x[$i+2],$j+8($out)
+	sw		@x[$i+3],$j+12($out)
+___
+}
+$code.=<<___;
+	xor		@x[12],@x[12],@y[0]
+	xor		@x[13],@x[13],@y[1]
+	xor		@x[14],@x[14],@y[2]
+	xor		@x[15],@x[15],@y[3]
+	sw		@x[12],48($out)
+	addi		$a5,$a5,1		# next counter value
+	sw		@x[13],52($out)
+	addi		$len,$len,-64
+	sw		@x[14],56($out)
+	addi		$inp,$inp,64
+	sw		@x[15],60($out)
+	addi		$out,$out,64
+	sltiu		@y[4],$len,64
+	beqz		$len,.Ldone
+
+	li		$at,10
+	jal		__ChaCha
+
+	beqz		@y[4],.Loop_aligned
 
 .Ltail:
 	mv		$ra,$sp
