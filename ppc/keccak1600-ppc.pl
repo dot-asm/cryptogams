@@ -441,7 +441,6 @@ SHA3_absorb:
 	$PUSH	r0,`$FRAME+$LRSAVE`($sp)
 
 	bl	PICmeup
-	subi	r4,r4,1				; prepare for lbzu
 	subi	r12,r12,8			; prepare for ldu
 
 	$PUSH	r3,`$LOCALS+0*$SIZE_T`($sp)	; save A[][]
@@ -477,107 +476,81 @@ SHA3_absorb:
 	ld	$A[4][3],`8*23`(r3)
 	ld	$A[4][4],`8*24`(r3)
 
-	mr	r3,r4
-	mr	r4,r5
-	mr	r5,r0
-
+	subi	r3,r4,1				; prepare for lbzu
 	b	.Loop_absorb
 
 .align	4
 .Loop_absorb:
-	$UCMP	r4,r5				; len < bsz?
+	$UCMP	r5,r0				; len < bsz?
 	blt	.Labsorbed
 
-	sub	r4,r4,r5			; len -= bsz
-	srwi	r5,r5,3
-	$PUSH	r4,`$LOCALS+2*$SIZE_T`($sp)	; save len
-	mtctr	r5
+	sub	r5,r5,r0			; len -= bsz
+	cmplwi	cr0,r0,104
+	cmplwi	cr1,r0,144
+	$PUSH	r5,`$LOCALS+2*$SIZE_T`($sp)	; save len
+
 	bl	dword_le_load			; *inp++
 	xor	$A[0][0],$A[0][0],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[0][1],$A[0][1],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[0][2],$A[0][2],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[0][3],$A[0][3],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[0][4],$A[0][4],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[1][0],$A[1][0],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[1][1],$A[1][1],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[1][2],$A[1][2],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[1][3],$A[1][3],r0
-	bdz	.Lprocess_block
+	blt	.Lprocess_block
+
 	bl	dword_le_load			; *inp++
 	xor	$A[1][4],$A[1][4],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[2][0],$A[2][0],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[2][1],$A[2][1],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[2][2],$A[2][2],r0
-	bdz	.Lprocess_block
+	beq	.Lprocess_block
+
 	bl	dword_le_load			; *inp++
 	xor	$A[2][3],$A[2][3],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[2][4],$A[2][4],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[3][0],$A[3][0],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[3][1],$A[3][1],r0
-	bdz	.Lprocess_block
+	blt	cr1,.Lprocess_block
+
 	bl	dword_le_load			; *inp++
 	xor	$A[3][2],$A[3][2],r0
-	bdz	.Lprocess_block
+	beq	cr1,.Lprocess_block
+
 	bl	dword_le_load			; *inp++
 	xor	$A[3][3],$A[3][3],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[3][4],$A[3][4],r0
-	bdz	.Lprocess_block
 	bl	dword_le_load			; *inp++
 	xor	$A[4][0],$A[4][0],r0
-	bdz	.Lprocess_block
-	bl	dword_le_load			; *inp++
-	xor	$A[4][1],$A[4][1],r0
-	bdz	.Lprocess_block
-	bl	dword_le_load			; *inp++
-	xor	$A[4][2],$A[4][2],r0
-	bdz	.Lprocess_block
-	bl	dword_le_load			; *inp++
-	xor	$A[4][3],$A[4][3],r0
-	bdz	.Lprocess_block
-	bl	dword_le_load			; *inp++
-	xor	$A[4][4],$A[4][4],r0
 
 .Lprocess_block:
 	$PUSH	r3,`$LOCALS+1*$SIZE_T`($sp)	; save inp
 
 	bl	KeccakF1600_int
 
-	$POP	r0,`$LOCALS+4*$SIZE_T`($sp)	; pull iotas[24]
-	$POP	r5,`$LOCALS+3*$SIZE_T`($sp)	; restore bsz
-	$POP	r4,`$LOCALS+2*$SIZE_T`($sp)	; restore len
+	$POP	r4,`$LOCALS+4*$SIZE_T`($sp)	; pull iotas[24]
+	$POP	r0,`$LOCALS+3*$SIZE_T`($sp)	; restore bsz
+	$POP	r5,`$LOCALS+2*$SIZE_T`($sp)	; restore len
 	$POP	r3,`$LOCALS+1*$SIZE_T`($sp)	; restore inp
-	addic	r0,r0,`-8*24`			; rewind iotas
-	$PUSH	r0,`$LOCALS+4*$SIZE_T`($sp)
+	addic	r4,r4,`-8*24`			; rewind iotas
+	$PUSH	r4,`$LOCALS+4*$SIZE_T`($sp)
 
 	b	.Loop_absorb
 
@@ -610,7 +583,7 @@ SHA3_absorb:
 	std	$A[4][3],`8*23`(r3)
 	std	$A[4][4],`8*24`(r3)
 
-	mr	r3,r4				; return value
+	mr	r3,r5				; return value
 	$POP	r0,`$FRAME+$LRSAVE`($sp)
 	$POP	r14,`$FRAME-$SIZE_T*18`($sp)
 	$POP	r15,`$FRAME-$SIZE_T*17`($sp)
