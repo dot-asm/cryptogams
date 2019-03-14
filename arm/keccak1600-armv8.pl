@@ -385,33 +385,47 @@ SHA3_absorb:
 	blo	.Labsorbed
 
 	str	$C[0],[sp,#48]			// save len - bsz
+	cmp	$C[3],#104
 ___
-for (my $i=0; $i<24; $i+=2) {
-my $j = $i+1;
+sub load_n_xor {
+    my ($from,$to) = @_;
+
+    for (my $i=$from; $i<=$to; $i++) {
 $code.=<<___;
-	ldr	$C[0],[$C[1]],#8		// *inp++
+	ldr	$C[0],[$C[1],#`8*$i`]		// A[`$i/5`][`$i%5`] ^= *inp++
 #ifdef	__AARCH64EB__
 	rev	$C[0],$C[0]
 #endif
 	eor	$A[$i/5][$i%5],$A[$i/5][$i%5],$C[0]
-	cmp	$C[3],#8*($i+2)
-	blo	.Lprocess_block
-	ldr	$C[0],[$C[1]],#8		// *inp++
-#ifdef	__AARCH64EB__
-	rev	$C[0],$C[0]
-#endif
-	eor	$A[$j/5][$j%5],$A[$j/5][$j%5],$C[0]
-	beq	.Lprocess_block
 ___
+    }
 }
+load_n_xor(0,8);
 $code.=<<___;
-	ldr	$C[0],[$C[1]],#8		// *inp++
-#ifdef	__AARCH64EB__
-	rev	$C[0],$C[0]
-#endif
-	eor	$A[4][4],$A[4][4],$C[0]
+	blo	.Lprocess_block
+
+___
+load_n_xor(9,12);
+$code.=<<___;
+	beq	.Lprocess_block
+
+	cmp	$C[3],#144
+___
+load_n_xor(13,16);
+$code.=<<___;
+	blo	.Lprocess_block
+
+___
+load_n_xor(17,17);
+$code.=<<___;
+	beq	.Lprocess_block
+
+___
+load_n_xor(18,20);
+$code.=<<___;
 
 .Lprocess_block:
+	add	$C[1],@C[1],@C[3]
 	str	$C[1],[sp,#40]			// save inp
 
 	bl	KeccakF1600_int
@@ -700,33 +714,48 @@ $code.=<<___;
 .Loop_absorb_ce:
 	subs	$len,$len,$bsz		// len - bsz
 	blo	.Labsorbed_ce
+
+	cmp	$bsz,#104
 ___
-for (my $i=0; $i<24; $i+=2) {
-my $j = $i+1;
+sub load_n_xor_ce {
+    my ($from,$to) = @_;
+
+    for (my $i=$from; $i<=$to; $i++) {
 $code.=<<___;
-	ldr	d31,[$inp],#8		// *inp++
+	ldr	d31,[$inp,#`8*$i`]		// A[`$i/5`][`$i%5`] ^= *inp++
 #ifdef	__AARCH64EB__
-	rev64	v31.16b,v31.16b
+	rev	v31.16b,v31.16b
 #endif
 	eor	$A[$i/5][$i%5],$A[$i/5][$i%5],v31.16b
-	cmp	$bsz,#8*($i+2)
-	blo	.Lprocess_block_ce
-	ldr	d31,[$inp],#8		// *inp++
-#ifdef	__AARCH64EB__
-	rev64	v31.16b,v31.16b
-#endif
-	eor	$A[$j/5][$j%5],$A[$j/5][$j%5],v31.16b
-	beq	.Lprocess_block_ce
 ___
+    }
 }
+load_n_xor_ce(0,8);
 $code.=<<___;
-	ldr	d31,[$inp],#8		// *inp++
-#ifdef	__AARCH64EB__
-	rev64	v31.16b,v31.16b
-#endif
-	eor	$A[4][4],$A[4][4],v31.16b
+	blo	.Lprocess_block_ce
+
+___
+load_n_xor_ce(9,12);
+$code.=<<___;
+	beq	.Lprocess_block_ce
+
+	cmp	$bsz,#144
+___
+load_n_xor_ce(13,16);
+$code.=<<___;
+	blo	.Lprocess_block_ce
+
+___
+load_n_xor_ce(17,17);
+$code.=<<___;
+	beq	.Lprocess_block_ce
+
+___
+load_n_xor_ce(18,20);
+$code.=<<___;
 
 .Lprocess_block_ce:
+	add	$inp,$inp,$bsz
 
 	bl	KeccakF1600_ce
 
@@ -840,6 +869,7 @@ ___
 }
 
 foreach(split("\n",$code)) {
+	use integer;
 
 	s/\`([^\`]*)\`/eval($1)/ge;
 
