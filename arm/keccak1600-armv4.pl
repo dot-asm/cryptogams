@@ -1337,95 +1337,57 @@ SHA3_absorb_neon:
 	mov	r5, r12
 
 	vld1.8	{d31}, [r4]!		@ endian-neutral loads...
-	cmp	r6, #8*2
 	veor	d0, d0, d31		@ A[0][0] ^= *inp++
-	blo	.Lprocess_neon
 	vld1.8	{d31}, [r4]!
 	veor	d2, d2, d31		@ A[0][1] ^= *inp++
-	beq	.Lprocess_neon
 	vld1.8	{d31}, [r4]!
-	cmp	r6, #8*4
 	veor	d4, d4, d31		@ A[0][2] ^= *inp++
-	blo	.Lprocess_neon
 	vld1.8	{d31}, [r4]!
 	veor	d6, d6, d31		@ A[0][3] ^= *inp++
-	beq	.Lprocess_neon
 	vld1.8	{d31},[r4]!
-	cmp	r6, #8*6
 	veor	d8, d8, d31		@ A[0][4] ^= *inp++
-	blo	.Lprocess_neon
-
 	vld1.8	{d31}, [r4]!
 	veor	d1, d1, d31		@ A[1][0] ^= *inp++
-	beq	.Lprocess_neon
 	vld1.8	{d31}, [r4]!
-	cmp	r6, #8*8
 	veor	d3, d3, d31		@ A[1][1] ^= *inp++
-	blo	.Lprocess_neon
 	vld1.8	{d31}, [r4]!
 	veor	d5, d5, d31		@ A[1][2] ^= *inp++
-	beq	.Lprocess_neon
 	vld1.8	{d31}, [r4]!
-	cmp	r6, #8*10
+	cmp	r6, #8*13
 	veor	d7, d7, d31		@ A[1][3] ^= *inp++
 	blo	.Lprocess_neon
+
 	vld1.8	{d31}, [r4]!
 	veor	d9, d9, d31		@ A[1][4] ^= *inp++
-	beq	.Lprocess_neon
-
 	vld1.8	{d31}, [r4]!
-	cmp	r6, #8*12
 	veor	d10, d10, d31		@ A[2][0] ^= *inp++
-	blo	.Lprocess_neon
 	vld1.8	{d31}, [r4]!
 	veor	d12, d12, d31		@ A[2][1] ^= *inp++
-	beq	.Lprocess_neon
 	vld1.8	{d31}, [r4]!
-	cmp	r6, #8*14
 	veor	d14, d14, d31		@ A[2][2] ^= *inp++
-	blo	.Lprocess_neon
-	vld1.8	{d31}, [r4]!
-	veor	d16, d16, d31		@ A[2][3] ^= *inp++
 	beq	.Lprocess_neon
-	vld1.8	{d31}, [r4]!
-	cmp	r6, #8*16
-	veor	d18, d18, d31		@ A[2][4] ^= *inp++
-	blo	.Lprocess_neon
 
 	vld1.8	{d31}, [r4]!
+	veor	d16, d16, d31		@ A[2][3] ^= *inp++
+	vld1.8	{d31}, [r4]!
+	veor	d18, d18, d31		@ A[2][4] ^= *inp++
+	vld1.8	{d31}, [r4]!
 	veor	d11, d11, d31		@ A[3][0] ^= *inp++
-	beq	.Lprocess_neon
 	vld1.8	{d31}, [r4]!
 	cmp	r6, #8*18
 	veor	d13, d13, d31		@ A[3][1] ^= *inp++
 	blo	.Lprocess_neon
+
 	vld1.8	{d31}, [r4]!
 	veor	d15, d15, d31		@ A[3][2] ^= *inp++
 	beq	.Lprocess_neon
-	vld1.8	{d31}, [r4]!
-	cmp	r6, #8*20
-	veor	d17, d17, d31		@ A[3][3] ^= *inp++
-	blo	.Lprocess_neon
-	vld1.8	{d31}, [r4]!
-	veor	d19, d19, d31		@ A[3][4] ^= *inp++
-	beq	.Lprocess_neon
 
 	vld1.8	{d31}, [r4]!
-	cmp	r6, #8*22
+	veor	d17, d17, d31		@ A[3][3] ^= *inp++
+	vld1.8	{d31}, [r4]!
+	veor	d19, d19, d31		@ A[3][4] ^= *inp++
+	vld1.8	{d31}, [r4]!
 	veor	d20, d20, d31		@ A[4][0] ^= *inp++
-	blo	.Lprocess_neon
-	vld1.8	{d31}, [r4]!
-	veor	d21, d21, d31		@ A[4][1] ^= *inp++
-	beq	.Lprocess_neon
-	vld1.8	{d31}, [r4]!
-	cmp	r6, #8*24
-	veor	d22, d22, d31		@ A[4][2] ^= *inp++
-	blo	.Lprocess_neon
-	vld1.8	{d31}, [r4]!
-	veor	d23, d23, d31		@ A[4][3] ^= *inp++
-	beq	.Lprocess_neon
-	vld1.8	{d31}, [r4]!
-	veor	d24, d24, d31		@ A[4][4] ^= *inp++
 
 .Lprocess_neon:
 	bl	KeccakF1600_neon
