@@ -8,6 +8,8 @@
 // January 2019
 //
 // Performance was reported to be ~2.1 cycles per byte on Itanium 2.
+// With exception for processors in 95xx family, which have higher
+// floating-point instructions' latencies and deliver ~2.6 cpb.
 // Comparison to compiler-generated code is not exactly fair, because
 // of different radixes. But just for reference, it was observed to be
 // >3x faster. Originally it was argued that floating-point base 2^32
@@ -189,11 +191,10 @@ poly1305_blocks:
 { .mmi;		setf.sig	HF0=h0
 		cmp.ltu		p6,p0=h0,i0
 		cmp.ltu		p7,p0=h1,i1		};;
-{ .mii;	(p6)	cmp.eq.or	p7,p0=-1,h1
-	(p6)	add		h1=1,h1;;
-	(p7)	add		h2=1,h2			};;
-
-{ .mmi;		setf.sig	HF1=h1
+{ .mmi;	(p6)	add		h1=1,h1;;
+		setf.sig	HF1=h1
+	(p6)	cmp.eq.or	p7,p0=0,h1		};;
+{ .mmi;	(p7)	add		h2=1,h2;;
 		setf.sig	HF2=h2			};;
 
 { .mfi;	(p16)	ld8		r15=[r10],16
