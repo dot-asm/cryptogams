@@ -27,13 +27,15 @@
 # PPC74x0/G4		44/+190%	-
 # PPC970/G5		36/+200%	14.0/+130%
 # POWER7		28/+60%		9.7/+110%
-# POWER8		-		10.6/+100%
-# POWER9		-		8.2/+66%
+# POWER8		-		9.6(**)/+120%
+# POWER9		-		7.4(**)/+80%
 #
 # (*)	Corresponds to SHA3-256. Percentage after slash is improvement
 #	over gcc-4.x-generated code. Newer compilers do much better
 #	(but watch out for them generating code specific to processor
 #	they execute on).
+# (**)	These results are for aligned input on little-endian system,
+#	misalgined and big-endian results are ~10% worse.
 
 $flavour = shift;
 
@@ -475,7 +477,89 @@ SHA3_absorb:
 	ld	$A[4][2],`8*22`(r3)
 	ld	$A[4][3],`8*23`(r3)
 	ld	$A[4][4],`8*24`(r3)
+___
+$code.=<<___	if ($flavour =~ /le/);
+	andi.	r3,r4,7				; see if inp is aligned
+	bne	.Lmisaligned
 
+.Loop_aligned:
+	$UCMP	r5,r0				; len < bsz?
+	blt	.Labsorbed
+
+	sub	r5,r5,r0			; len -= bsz
+	cmplwi	cr0,r0,104
+	cmplwi	cr1,r0,144
+	$PUSH	r5,`$LOCALS+2*$SIZE_T`($sp)	; save len
+
+	ld	r3,`8*0`(r4)
+	xor	$A[0][0],$A[0][0],r3
+	ld	r3,`8*1`(r4)
+	xor	$A[0][1],$A[0][1],r3
+	ld	r3,`8*2`(r4)
+	xor	$A[0][2],$A[0][2],r3
+	ld	r3,`8*3`(r4)
+	xor	$A[0][3],$A[0][3],r3
+	ld	r3,`8*4`(r4)
+	xor	$A[0][4],$A[0][4],r3
+	ld	r3,`8*5`(r4)
+	xor	$A[1][0],$A[1][0],r3
+	ld	r3,`8*6`(r4)
+	xor	$A[1][1],$A[1][1],r3
+	ld	r3,`8*7`(r4)
+	xor	$A[1][2],$A[1][2],r3
+	ld	r3,`8*8`(r4)
+	xor	$A[1][3],$A[1][3],r3
+	blt	.Lprocess_aligned
+
+	ld	r3,`8*9`(r4)
+	xor	$A[1][4],$A[1][4],r3
+	ld	r3,`8*10`(r4)
+	xor	$A[2][0],$A[2][0],r3
+	ld	r3,`8*11`(r4)
+	xor	$A[2][1],$A[2][1],r3
+	ld	r3,`8*12`(r4)
+	xor	$A[2][2],$A[2][2],r3
+	beq	.Lprocess_aligned
+
+	ld	r3,`8*13`(r4)
+	xor	$A[2][3],$A[2][3],r3
+	ld	r3,`8*14`(r4)
+	xor	$A[2][4],$A[2][4],r3
+	ld	r3,`8*15`(r4)
+	xor	$A[3][0],$A[3][0],r3
+	ld	r3,`8*16`(r4)
+	xor	$A[3][1],$A[3][1],r3
+	blt	cr1,.Lprocess_aligned
+
+	ld	r3,`8*17`(r4)
+	xor	$A[3][2],$A[3][2],r3
+	beq	cr1,.Lprocess_aligned
+
+	ld	r3,`8*18`(r4)
+	xor	$A[3][3],$A[3][3],r3
+	ld	r3,`8*19`(r4)
+	xor	$A[3][4],$A[3][4],r3
+	ld	r3,`8*20`(r4)
+	xor	$A[4][0],$A[4][0],r3
+
+.Lprocess_aligned:
+	add	r4,r4,r0			; inp += bsz
+	$PUSH	r4,`$LOCALS+1*$SIZE_T`($sp)	; save inp
+
+	bl	KeccakF1600_int
+
+	$POP	r3,`$LOCALS+4*$SIZE_T`($sp)	; pull iotas[24]
+	$POP	r0,`$LOCALS+3*$SIZE_T`($sp)	; restore bsz
+	$POP	r5,`$LOCALS+2*$SIZE_T`($sp)	; restore len
+	$POP	r4,`$LOCALS+1*$SIZE_T`($sp)	; restore inp
+	addic	r3,r3,`-8*24`			; rewind iotas
+	$PUSH	r3,`$LOCALS+4*$SIZE_T`($sp)
+
+	b	.Loop_aligned
+
+.Lmisaligned:
+___
+$code.=<<___;
 	subi	r3,r4,1				; prepare for lbzu
 	b	.Loop_absorb
 
