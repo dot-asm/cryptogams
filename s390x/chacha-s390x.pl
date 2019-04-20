@@ -441,10 +441,7 @@ $code.=<<___;
 	vl	@K[3],0($counter)		# load counter
 
 	vl	$beperm,0x40(%r7)
-	vl	$xt1,0x50(%r7)
-	vrepf	$CTR,@K[3],0
-	vlvgf	@K[3],%r1,0			# clear @K[3].word[0]
-	vaf	$CTR,$CTR,$xt1
+	vl	$CTR,0x50(%r7)
 
 #.Loop_outer_4x:
 	vlm	$xa0,$xa3,0x60(%r7)		# load [smashed] sigma
@@ -454,15 +451,16 @@ $code.=<<___;
 	vrepf	$xb2,@K[1],2
 	vrepf	$xb3,@K[1],3
 
+	vrepf	$xd0,@K[3],0
+	vrepf	$xd1,@K[3],1
+	vrepf	$xd2,@K[3],2
+	vrepf	$xd3,@K[3],3
+	vaf	$xd0,$xd0,$CTR
+
 	vrepf	$xc0,@K[2],0
 	vrepf	$xc1,@K[2],1
 	vrepf	$xc2,@K[2],2
 	vrepf	$xc3,@K[2],3
-
-	vlr	$xd0,$CTR
-	vrepf	$xd1,@K[3],1
-	vrepf	$xd2,@K[3],2
-	vrepf	$xd3,@K[3],3
 
 .Loop_4x:
 ___
