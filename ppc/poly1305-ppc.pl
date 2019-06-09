@@ -105,8 +105,10 @@ $code.=<<___;
 	beq-	Lno_key
 ___
 $code.=<<___	if ($LITTLE_ENDIAN);
-	ld	$d0,0($inp)		# load key material
-	ld	$d1,8($inp)
+	lwz	$d0,0($inp)		# load key material
+	lwz	$h0,4($inp)
+	lwz	$d1,8($inp)
+	lwz	$h1,12($inp)
 ___
 $code.=<<___	if (!$LITTLE_ENDIAN);
 	li	$h0,4
@@ -116,10 +118,11 @@ $code.=<<___	if (!$LITTLE_ENDIAN);
 	li	$h1,12
 	lwbrx	$d1,$d1,$inp
 	lwbrx	$h1,$h1,$inp
-	insrdi	$d0,$h0,32,0
-	insrdi	$d1,$h1,32,0
 ___
 $code.=<<___;
+	insrdi	$d0,$h0,32,0
+	insrdi	$d1,$h1,32,0
+
 	lis	$h1,0xfff		# 0x0fff0000
 	ori	$h1,$h1,0xfffc		# 0x0ffffffc
 	insrdi	$h1,$h1,32,0		# 0x0ffffffc0ffffffc
@@ -171,8 +174,10 @@ Lpoly1305_blocks:
 Loop:
 ___
 $code.=<<___	if ($LITTLE_ENDIAN);
-	ld	$t0,0($inp)		# load input
-	ld	$t1,8($inp)
+	lwz	$t0,0($inp)		# load input
+	lwz	$d0,4($inp)
+	lwz	$t1,8($inp)
+	lwz	$d1,12($inp)
 ___
 $code.=<<___	if (!$LITTLE_ENDIAN);
 	li	$d0,4
@@ -182,10 +187,10 @@ $code.=<<___	if (!$LITTLE_ENDIAN);
 	li	$d1,12
 	lwbrx	$t1,$t1,$inp
 	lwbrx	$d1,$d1,$inp
-	insrdi	$t0,$d0,32,0
-	insrdi	$t1,$d1,32,0
 ___
 $code.=<<___;
+	insrdi	$t0,$d0,32,0
+	insrdi	$t1,$d1,32,0
 	addi	$inp,$inp,16
 
 	addc	$h0,$h0,$t0		# accumulate input
@@ -377,10 +382,10 @@ $code.=<<___;
 	beq-	Lno_key
 ___
 $code.=<<___	if ($LITTLE_ENDIAN);
-	lw	$h0,0($inp)		# load key material
-	lw	$h1,4($inp)
-	lw	$h2,8($inp)
-	lw	$h3,12($inp)
+	lwz	$h0,0($inp)		# load key material
+	lwz	$h1,4($inp)
+	lwz	$h2,8($inp)
+	lwz	$h3,12($inp)
 ___
 $code.=<<___	if (!$LITTLE_ENDIAN);
 	li	$h1,4
