@@ -1,6 +1,16 @@
 #!/usr/bin/env perl
 
-# PowerPC assembler distiller by <appro>.
+# PowerPC assembler distiller by \@dot-asm.
+
+################################################################
+# Recognized "flavour"-s are:
+#
+# linux{32|64}[le]  GNU assembler and ELF symbol decorations,
+#                   with little-endian option
+# linux64v2         GNU asssembler and big-endian instantiation
+#                   of latest ELF specification
+# aix{32|64}        AIX assembler and symbol decorations
+# osx{32|64}        Mac OS X assembler and symbol decoratons
 
 my $flavour = shift;
 my $output = shift;
