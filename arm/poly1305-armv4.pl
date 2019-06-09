@@ -82,9 +82,13 @@ poly1305_init:
 	moveq	r0,#0
 	beq	.Lno_key
 
-#if	__ARM_MAX_ARCH__>=7 && !defined(__KERNEL__)
+#if	__ARM_MAX_ARCH__>=7
+	mov	r3,#-1
+	str	r3,[$ctx,#28]		@ impossible key power value
+# ifndef __KERNEL__
 	adr	r11,.Lpoly1305_init
 	ldr	r12,.LOPENSSL_armcap
+# endif
 #endif
 	ldrb	r4,[$inp,#0]
 	mov	r10,#0x0fffffff
@@ -186,32 +190,40 @@ poly1305_blocks:
 	add	$len,$len,$inp		@ end pointer
 	sub	sp,sp,#32
 
-#if __ARM_ARCH__<7 || !defined(__KERNEL__)
+#if __ARM_ARCH__<7
 	ldmia	$ctx,{$h0-$r3}		@ load context
+	add	$ctx,$ctx,#20
+	str	$len,[sp,#16]		@ offload stuff
+	str	$ctx,[sp,#12]
 #else
 	ldr	lr,[$ctx,#36]		@ is_base2_26
-	ldmia	$ctx,{$h0-$r3}		@ load context
+	ldmia	$ctx!,{$h0-$h4}		@ load hash value
+	str	$len,[sp,#16]		@ offload stuff
+	str	$ctx,[sp,#12]
 
-	tst	lr,lr
-	beq	.Lbase2_32
+	adds	$r0,$h0,$h1,lsl#26	@ base 2^26 -> base 2^32
+	mov	$r1,$h1,lsr#6
+	adcs	$r1,$r1,$h2,lsl#20
+	mov	$r2,$h2,lsr#12
+	adcs	$r2,$r2,$h3,lsl#14
+	mov	$r3,$h3,lsr#18
+	adcs	$r3,$r3,$h4,lsl#8
+	mov	$len,#0
+	teq	lr,#0
+	str	$len,[$ctx,#16]		@ clear is_base2_26
+	adc	$len,$len,$h4,lsr#24
 
-	adds	$h0,$h0,$h1,lsl#26	@ base 2^26 -> base 2^32
-	mov	$h1,$h1,lsr#6
-	adcs	$h1,$h1,$h2,lsl#20
-	mov	$h2,$h2,lsr#12
-	adcs	$h2,$h2,$h3,lsl#14
-	mov	$h3,$h3,lsr#18
-	adcs	$h3,$h3,$h4,lsl#8
-	mov	lr,#0
-	adc	$h4,lr,$h4,lsr#24
-	str	lr,[$ctx,#36]		@ clear is_base2_26
-
-.Lbase2_32:
+	itttt	ne
+	movne	$h0,$r0			@ choose between radixes
+	movne	$h1,$r1
+	movne	$h2,$r2
+	movne	$h3,$r3
+	ldmia	$ctx,{$r0-$r3}		@ load key
+	it	ne
+	movne	$h4,$len
 #endif
 
-	str	$ctx,[sp,#12]		@ offload stuff
 	mov	lr,$inp
-	str	$len,[sp,#16]
 	cmp	$padbit,#0
 	str	$r1,[sp,#20]
 	str	$r2,[sp,#24]
@@ -263,9 +275,7 @@ poly1305_blocks:
 	orr	r3,r2,r3,lsl#24
 #else
 	ldr	r0,[lr],#16		@ load input
-# ifdef	__thumb2__
 	it	hi
-# endif
 	addhi	$h4,$h4,#1		@ padbit
 	ldr	r1,[lr,#-12]
 	ldr	r2,[lr,#-8]
@@ -342,7 +352,7 @@ poly1305_blocks:
 
 	ldr	$ctx,[sp,#12]
 	add	sp,sp,#32
-	stmia	$ctx,{$h0-$h4}		@ store the result
+	stmdb	$ctx,{$h0-$h4}		@ store the result
 
 .Lno_data:
 #if	__ARM_ARCH__>=5
@@ -495,6 +505,10 @@ $code.=<<___;
 .align	5
 poly1305_init_neon:
 .Lpoly1305_init_neon:
+	ldr	r3,[$ctx,#48]		@ first table element
+	cmp	r3,#-1			@ is value impossible?
+	bne	.Lno_init_neon
+
 	ldr	r4,[$ctx,#20]		@ load key base 2^32
 	ldr	r5,[$ctx,#24]
 	ldr	r6,[$ctx,#28]
@@ -703,6 +717,7 @@ poly1305_init_neon:
 	vst1.32		{${S4}[0]},[$tbl0]
 	vst1.32		{${S4}[1]},[$tbl1]
 
+.Lno_init_neon:
 	ret				@ bx	lr
 .size	poly1305_init_neon,.-poly1305_init_neon
 
@@ -711,15 +726,10 @@ poly1305_init_neon:
 poly1305_blocks_neon:
 .Lpoly1305_blocks_neon:
 	ldr	ip,[$ctx,#36]		@ is_base2_26
-	ands	$len,$len,#-16
-	beq	.Lno_data_neon
 
 	cmp	$len,#64
-	bhs	.Lenter_neon
-	tst	ip,ip			@ is_base2_26?
-	beq	.Lpoly1305_blocks
+	blo	.Lpoly1305_blocks
 
-.Lenter_neon:
 	stmdb	sp!,{r4-r7}
 	vstmdb	sp!,{d8-d15}		@ ABI specification says so
 
@@ -763,7 +773,7 @@ poly1305_blocks_neon:
 	adr	$zeros,.Lzeros
 
 	ldmia	sp!,{r1-r3,lr}
-	b	.Lbase2_32_neon
+	b	.Lhash_loaded
 
 .align	4
 .Lbase2_26_neon:
@@ -780,7 +790,7 @@ poly1305_blocks_neon:
 	vld1.32		{$D4#lo[0]},[$ctx]
 	sub		$ctx,$ctx,#16		@ rewind
 
-.Lbase2_32_neon:
+.Lhash_loaded:
 	add		$in2,$inp,#32
 	mov		$padbit,$padbit,lsl#24
 	tst		$len,#31
@@ -1189,7 +1199,6 @@ poly1305_blocks_neon:
 
 	vldmia	sp!,{d8-d15}			@ epilogue
 	ldmia	sp!,{r4-r7}
-.Lno_data_neon:
 	ret					@ bx	lr
 .size	poly1305_blocks_neon,.-poly1305_blocks_neon
 
@@ -1204,6 +1213,7 @@ poly1305_blocks_neon:
 .word	OPENSSL_armcap_P-.Lpoly1305_init
 # endif
 .comm	OPENSSL_armcap_P,4,4
+.hidden	OPENSSL_armcap_P
 #endif
 #endif
 ___

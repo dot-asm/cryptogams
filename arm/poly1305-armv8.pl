@@ -80,7 +80,9 @@ poly1305_init:
 	and	$r0,$r0,$s1		// &=0ffffffc0fffffff
 	and	$s1,$s1,#-4
 	and	$r1,$r1,$s1		// &=0ffffffc0ffffffc
+	mov	w#$s1,#-1
 	stp	$r0,$r1,[$ctx,#32]	// save key value
+	str	w#$s1,[$ctx,#48]	// impossible key power value
 
 #ifndef	__KERNEL__
 	tst	w17,#ARMV7_NEON
@@ -110,11 +112,8 @@ poly1305_blocks:
 	b.eq	.Lno_data
 
 	ldp	$h0,$h1,[$ctx]		// load hash value
+	ldp	$h2,x17,[$ctx,#16]	// [along with is_base2_26]
 	ldp	$r0,$r1,[$ctx,#32]	// load key value
-	ldp	$h2,$d2,[$ctx,#16]
-	add	$s1,$r1,$r1,lsr#2	// s1 = r1 + (r1 >> 2)
-#idef	__KERNEL__
-	cbz	$d2,.Loop
 
 #ifdef	__AARCH64EB__
 	lsr	$d0,$h0,#32
@@ -132,17 +131,19 @@ poly1305_blocks:
 
 	add	$d0,$d0,$d1,lsl#26	// base 2^26 -> base 2^64
 	lsr	$d1,$d2,#12
-	adds	$h0,$d0,$d2,lsl#52
+	adds	$d0,$d0,$d2,lsl#52
 	add	$d1,$d1,x15,lsl#14
 	adc	$d1,$d1,xzr
 	lsr	$d2,x16,#24
-	adds	$h1,$d1,x16,lsl#40
-	str	xzr,[$ctx,#24]		// clear is_Base2_26
-	adc	$h2,$d2,xzr
-#endif
-	b	.Loop
+	adds	$d1,$d1,x16,lsl#40
+	adc	$d2,$d2,xzr
 
-.align	5
+	cmp	x17,#0			// is_base2_26?
+	add	$s1,$r1,$r1,lsr#2	// s1 = r1 + (r1 >> 2)
+	csel	$h0,$h0,$d0,eq		// choose between radixes
+	csel	$h1,$h1,$d1,eq
+	csel	$h2,$h2,$d2,eq
+
 .Loop:
 	ldp	$t0,$t1,[$inp],#16	// load input
 	sub	$len,$len,#16
@@ -188,7 +189,7 @@ poly1305_blocks:
 	cbnz	$len,.Loop
 
 	stp	$h0,$h1,[$ctx]		// store hash value
-	str	$h2,[$ctx,#16]
+	stp	$h2,xzr,[$ctx,#16]	// [and clear is_base2_26]
 
 .Lno_data:
 	ret
@@ -303,7 +304,7 @@ poly1305_mult:
 .size	poly1305_mult,.-poly1305_mult
 
 .type	poly1305_splat,%function
-.align	5
+.align	4
 poly1305_splat:
 	and	x12,$h0,#0x03ffffff	// base 2^64 -> base 2^26
 	ubfx	x13,$h0,#26,#26
@@ -338,15 +339,16 @@ poly1305_blocks_neon:
 .Lpoly1305_blocks_neon:
 	ldr	$is_base2_26,[$ctx,#24]
 	cmp	$len,#128
-	b.hs	.Lblocks_neon
-	cbz	$is_base2_26,.Lpoly1305_blocks
+	b.lo	.Lpoly1305_blocks
 
-.Lblocks_neon:
+	.inst	0xd503233f		// paciasp
 	stp	x29,x30,[sp,#-80]!
 	add	x29,sp,#0
 
-	ands	$len,$len,#-16
-	b.eq	.Lno_data_neon
+	stp	d8,d9,[sp,#16]		// meet ABI requirements
+	stp	d10,d11,[sp,#32]
+	stp	d12,d13,[sp,#48]
+	stp	d14,d15,[sp,#64]
 
 	cbz	$is_base2_26,.Lbase2_64_neon
 
@@ -372,13 +374,6 @@ poly1305_blocks_neon:
 	sub	$len,$len,#16
 	add	$s1,$r1,$r1,lsr#2	// s1 = r1 + (r1 >> 2)
 
-	and	$t0,$d2,#-4		// ... so reduce
-	and	$h2,$d2,#3
-	add	$t0,$t0,$d2,lsr#2
-	adds	$h0,$h0,$t0
-	adcs	$h1,$h1,xzr
-	adc	$h2,$h2,xzr
-
 #ifdef	__AARCH64EB__
 	rev	$d0,$d0
 	rev	$d1,$d1
@@ -388,9 +383,6 @@ poly1305_blocks_neon:
 	adc	$h2,$h2,$padbit
 
 	bl	poly1305_mult
-	ldr	x30,[sp,#8]
-
-	cbz	$padbit,.Lstore_base2_64_neon
 
 	and	x10,$h0,#0x03ffffff	// base 2^64 -> base 2^26
 	ubfx	x11,$h0,#26,#26
@@ -399,18 +391,7 @@ poly1305_blocks_neon:
 	ubfx	x13,$h1,#14,#26
 	extr	x14,$h2,$h1,#40
 
-	cbnz	$len,.Leven_neon
-
-	stp	w10,w11,[$ctx]		// store hash value base 2^26
-	stp	w12,w13,[$ctx,#8]
-	str	w14,[$ctx,#16]
-	b	.Lno_data_neon
-
-.align	4
-.Lstore_base2_64_neon:
-	stp	$h0,$h1,[$ctx]		// store hash value base 2^64
-	stp	$h2,xzr,[$ctx,#16]	// note that is_base2_26 is zeroed
-	b	.Lno_data_neon
+	b	.Leven_neon
 
 .align	4
 .Lbase2_64_neon:
@@ -436,6 +417,7 @@ poly1305_blocks_neon:
 	bl	poly1305_mult
 
 .Linit_neon:
+	ldr	w17,[$ctx,#48]		// first table element
 	and	x10,$h0,#0x03ffffff	// base 2^64 -> base 2^26
 	ubfx	x11,$h0,#26,#26
 	extr	x12,$h1,$h0,#52
@@ -443,10 +425,8 @@ poly1305_blocks_neon:
 	ubfx	x13,$h1,#14,#26
 	extr	x14,$h2,$h1,#40
 
-	stp	d8,d9,[sp,#16]		// meet ABI requirements
-	stp	d10,d11,[sp,#32]
-	stp	d12,d13,[sp,#48]
-	stp	d14,d15,[sp,#64]
+	cmp	w17,#-1			// is value impossible?
+	b.ne	.Leven_neon
 
 	fmov	${H0},x10
 	fmov	${H1},x11
@@ -473,30 +453,11 @@ poly1305_blocks_neon:
 	bl	poly1305_mult		// r^4
 	sub	$ctx,$ctx,#4
 	bl	poly1305_splat
-	ldr	x30,[sp,#8]
-
-	add	$in2,$inp,#32
-	adr	$zeros,.Lzeros
-	subs	$len,$len,#64
-	csel	$in2,$zeros,$in2,lo
-
-	mov	x4,#1
-	stur	x4,[$ctx,#-24]		// set is_base2_26
 	sub	$ctx,$ctx,#48		// restore original $ctx
 	b	.Ldo_neon
 
 .align	4
 .Leven_neon:
-	add	$in2,$inp,#32
-	adr	$zeros,.Lzeros
-	subs	$len,$len,#64
-	csel	$in2,$zeros,$in2,lo
-
-	stp	d8,d9,[sp,#16]		// meet ABI requirements
-	stp	d10,d11,[sp,#32]
-	stp	d12,d13,[sp,#48]
-	stp	d14,d15,[sp,#64]
-
 	fmov	${H0},x10
 	fmov	${H1},x11
 	fmov	${H2},x12
@@ -504,8 +465,11 @@ poly1305_blocks_neon:
 	fmov	${H4},x14
 
 .Ldo_neon:
-	ldp	x8,x12,[$in2],#16	// inp[2:3] (or zero)
-	ldp	x9,x13,[$in2],#48
+	ldp	x8,x12,[$inp,#32]	// inp[2:3]
+	subs	$len,$len,#64
+	ldp	x9,x13,[$inp,#48]
+	add	$in2,$inp,#96
+	adr	$zeros,.Lzeros
 
 	lsl	$padbit,$padbit,#24
 	add	x15,$ctx,#48
@@ -871,6 +835,8 @@ poly1305_blocks_neon:
 	addp	$ACC1,$ACC1,$ACC1
 	 ldp	d14,d15,[sp,#64]
 	addp	$ACC2,$ACC2,$ACC2
+	 ldr	x30,[sp,#8]
+	 .inst	0xd50323bf		// autiasp
 
 	////////////////////////////////////////////////////////////////
 	// lazy reduction, but without narrowing
@@ -907,9 +873,10 @@ poly1305_blocks_neon:
 	// write the result, can be partially reduced
 
 	st4	{$ACC0,$ACC1,$ACC2,$ACC3}[0],[$ctx],#16
+	mov	x4,#1
 	st1	{$ACC4}[0],[$ctx]
+	str	x4,[$ctx,#8]		// set is_base2_26
 
-.Lno_data_neon:
 	ldr	x29,[sp],#80
 	ret
 .size	poly1305_blocks_neon,.-poly1305_blocks_neon
@@ -919,6 +886,10 @@ poly1305_blocks_neon:
 .long	0,0,0,0,0,0,0,0
 .asciz	"Poly1305 for ARMv8, CRYPTOGAMS by \@dot-asm"
 .align	2
+#if !defined(__KERNEL__) && !defined(_WIN64)
+.comm	OPENSSL_armcap_P,4,4
+.hidden	OPENSSL_armcap_P
+#endif
 ___
 
 foreach (split("\n",$code)) {
