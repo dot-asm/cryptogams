@@ -219,6 +219,13 @@ my %globals;
 			x=>"XMMWORD$PTR", y=>"YMMWORD$PTR",
 			z=>"ZMMWORD$PTR" ) if (!$gas);
 
+    my %sifmap = (	ss=>"d",	sd=>"q",	# broadcast only
+			i32x2=>"q",	f32x2=>"q",
+			i32x4=>"x",	i64x2=>"x",	i128=>"x",
+			f32x4=>"x",	f64x2=>"x",	f128=>"x",
+			i32x8=>"y",	i64x4=>"y",
+			f32x8=>"y",	f64x4=>"y" ) if (!$gas);
+
     sub re {
 	my	($class, $line, $opcode) = @_;
 	my	$self = {};
@@ -302,7 +309,8 @@ my %globals;
 	    ($mnemonic =~ /^v?mov([qd])$/)		&& ($sz=$1)  ||
 	    ($mnemonic =~ /^v?pinsr([qdwb])$/)		&& ($sz=$1)  ||
 	    ($mnemonic =~ /^vpbroadcast([qdwb])$/)	&& ($sz=$1)  ||
-	    ($mnemonic =~ /^v(?!perm)[a-z]+[fi]128$/)	&& ($sz="x");
+	    ($mnemonic =~ /^v(?:broadcast|extract|insert)([sif]\w+)$/)
+							&& ($sz=$sifmap{$1});
 
 	    $self->{opmask}  =~ s/%(k[0-7])/$1/;
 
