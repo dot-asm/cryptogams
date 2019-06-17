@@ -1140,6 +1140,7 @@ default	rel
 %define XMMWORD
 %define YMMWORD
 %define ZMMWORD
+%define NEAR
 ___
 } elsif ($masm) {
     print <<___;
