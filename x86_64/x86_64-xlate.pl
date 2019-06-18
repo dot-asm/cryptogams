@@ -460,11 +460,7 @@ my %globals;
     }
     sub out {
 	my $self = shift;
-	if ($nasm && $self->{opcode}->mnemonic()=~m/^j(?![re]cxz)/) {
-	    "NEAR ".$self->{value};
-	} else {
-	    $self->{value};
-	}
+	$self->{value};
     }
 }
 { package cfi_directive;
@@ -1140,7 +1136,6 @@ default	rel
 %define XMMWORD
 %define YMMWORD
 %define ZMMWORD
-%define NEAR
 ___
 } elsif ($masm) {
     print <<___;
