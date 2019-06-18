@@ -2681,17 +2681,17 @@ poly1305_init_base2_44:
 	mov	%rax,8($ctx)
 	mov	%rax,16($ctx)
 
-.Linit_base2_44:
-	lea	poly1305_blocks_vpmadd52(%rip),%r10
-	lea	poly1305_emit_base2_44(%rip),%r11
+	cmp	\$0,$inp
+	je	.Lno_key_base2_44
 
+.Linit_base2_44:
 	mov	\$0x0ffffffc0fffffff,%rax
 	mov	\$0x0ffffffc0ffffffc,%rcx
 	and	0($inp),%rax
 	mov	\$0x00000fffffffffff,%r8
 	and	8($inp),%rcx
 	mov	\$0x00000fffffffffff,%r9
-	and	%rax,%r8
+	and	%rax,%r8		# base 2^64 -> base 2^44
 	shrd	\$44,%rcx,%rax
 	mov	%r8,40($ctx)		# r0
 	and	%r9,%rax
@@ -2706,6 +2706,11 @@ poly1305_init_base2_44:
 	mov	%rcx,32($ctx)		# s2
 	movq	\$-1,64($ctx)		# write impossible value
 ___
+					if ($flavour !~ /kernel/) {
+$code.=<<___;
+	lea	poly1305_blocks_vpmadd52(%rip),%r10
+	lea	poly1305_emit_base2_44(%rip),%r11
+___
 $code.=<<___	if ($flavour !~ /elf32/);
 	mov	%r10,0(%rdx)
 	mov	%r11,8(%rdx)
@@ -2714,8 +2719,10 @@ $code.=<<___	if ($flavour =~ /elf32/);
 	mov	%r10d,0(%rdx)
 	mov	%r11d,4(%rdx)
 ___
+					}
 $code.=<<___;
 	mov	\$1,%eax
+.Lno_key_base2_44:
 	ret
 .size	poly1305_init_base2_44,.-poly1305_init_base2_44
 ___
@@ -2773,7 +2780,7 @@ poly1305_blocks_base2_44:
 	add	$d2,$h1
 	add	$d3,$h2
 
-	#mov	$h0,%rdx
+	#mov	$h0,%rdx		# h0 is %rdx
 	mulx	$r0,$d1,%rbx		# h0*r0
 	mulx	$r1,$d2,%rcx		# h0*r1
 	mulx	56($ctx),$d3,%rbp	# h0*r2
