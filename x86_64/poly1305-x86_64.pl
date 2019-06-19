@@ -71,13 +71,15 @@ if (`$ENV{CC} -Wa,-v -c -o /dev/null -x assembler /dev/null 2>&1`
 }
 
 if (!$avx && $win64 && ($flavour =~ /nasm/ || $ENV{ASM} =~ /nasm/) &&
-	   `nasm -v 2>&1` =~ /NASM version ([2-9]\.[0-9]+)(?:\.([0-9]+))?/) {
+	   ($ENV{ASM} = $ENV{ASM} // "nasm") &&
+	   `"$ENV{ASM}" -v 2>&1` =~ /NASM version ([2-9]\.[0-9]+)(?:\.([0-9]+))?/) {
 	$avx = ($1>=2.09) + ($1>=2.10) + 2 * ($1>=2.12);
 	$avx += 2 if ($1==2.11 && $2>=8);
 }
 
 if (!$avx && $win64 && ($flavour =~ /masm/ || $ENV{ASM} =~ /ml64/) &&
-	   `ml64 2>&1` =~ /Version ([0-9]+)\./) {
+	   ($ENV{ASM} = $ENV{ASM} // "ml64") &&
+	   `"$ENV{ASM}" 2>&1` =~ /Version ([0-9]+)\./) {
 	$avx = ($1>=10) + ($1>=12) + 2 * ($1>=14);
 }
 
@@ -247,6 +249,8 @@ poly1305_blocks:
 .cfi_push	%r14
 	push	%r15
 .cfi_push	%r15
+	lea	-8(%rsp),%rsp
+.cfi_adjust_cfa_offset	8
 .Lblocks_body:
 
 	mov	$len,%r15		# reassign $len
@@ -309,20 +313,20 @@ $code.=<<___;
 	mov	$h1,8($ctx)
 	mov	$h2,16($ctx)
 
-	mov	0(%rsp),%r15
+	mov	8(%rsp),%r15
 .cfi_restore	%r15
-	mov	8(%rsp),%r14
+	mov	16(%rsp),%r14
 .cfi_restore	%r14
-	mov	16(%rsp),%r13
+	mov	24(%rsp),%r13
 .cfi_restore	%r13
-	mov	24(%rsp),%r12
+	mov	32(%rsp),%r12
 .cfi_restore	%r12
-	mov	32(%rsp),%rbp
+	mov	40(%rsp),%rbp
 .cfi_restore	%rbp
-	mov	40(%rsp),%rbx
+	mov	48(%rsp),%rbx
 .cfi_restore	%rbx
-	lea	48(%rsp),%rsp
-.cfi_adjust_cfa_offset	-48
+	lea	56(%rsp),%rsp
+.cfi_adjust_cfa_offset	-56
 .Lno_data:
 .Lblocks_epilogue:
 	ret
@@ -604,6 +608,8 @@ poly1305_blocks_avx:
 .cfi_push	%r14
 	push	%r15
 .cfi_push	%r15
+	lea	-8(%rsp),%rsp
+.cfi_adjust_cfa_offset	8
 .Lblocks_avx_body:
 
 	mov	$len,%r15		# reassign $len
@@ -674,21 +680,21 @@ poly1305_blocks_avx:
 
 	lea	-16(%r15),$len
 
-	mov	0(%rsp),%r15
+	mov	8(%rsp),%r15
 .cfi_restore	%r15
-	mov	8(%rsp),%r14
+	mov	16(%rsp),%r14
 .cfi_restore	%r14
-	mov	16(%rsp),%r13
+	mov	24(%rsp),%r13
 .cfi_restore	%r13
-	mov	24(%rsp),%r12
+	mov	32(%rsp),%r12
 .cfi_restore	%r12
-	mov	32(%rsp),%rbp
+	mov	40(%rsp),%rbp
 .cfi_restore	%rbp
-	mov	40(%rsp),%rbx
+	mov	48(%rsp),%rbx
 .cfi_restore	%rbx
-	lea	48(%rsp),%rax
-	lea	48(%rsp),%rsp
-.cfi_adjust_cfa_offset	-48
+	lea	56(%rsp),%rax		# for win64
+	lea	56(%rsp),%rsp
+.cfi_adjust_cfa_offset	-56
 .Lblocks_avx_epilogue:
 	jmp	.Ldo_avx
 .cfi_endproc
@@ -708,6 +714,8 @@ poly1305_blocks_avx:
 .cfi_push	%r14
 	push	%r15
 .cfi_push	%r15
+	lea	-8(%rsp),%rsp
+.cfi_adjust_cfa_offset	8
 .Lbase2_64_avx_body:
 
 	mov	$len,%r15		# reassign $len
@@ -765,21 +773,21 @@ poly1305_blocks_avx:
 
 	mov	%r15,$len
 
-	mov	0(%rsp),%r15
+	mov	8(%rsp),%r15
 .cfi_restore	%r15
-	mov	8(%rsp),%r14
+	mov	16(%rsp),%r14
 .cfi_restore	%r14
-	mov	16(%rsp),%r13
+	mov	24(%rsp),%r13
 .cfi_restore	%r13
-	mov	24(%rsp),%r12
+	mov	32(%rsp),%r12
 .cfi_restore	%r12
-	mov	32(%rsp),%rbp
+	mov	40(%rsp),%rbp
 .cfi_restore	%rbp
-	mov	40(%rsp),%rbx
+	mov	48(%rsp),%rbx
 .cfi_restore	%rbx
-	lea	48(%rsp),%rax
-	lea	48(%rsp),%rsp
-.cfi_adjust_cfa_offset	-48
+	lea	56(%rsp),%rax		# for win64
+	lea	56(%rsp),%rsp
+.cfi_adjust_cfa_offset	-56
 .Lbase2_64_avx_epilogue:
 	jmp	.Ldo_avx
 .cfi_endproc
@@ -1435,6 +1443,8 @@ poly1305_blocks_avx2:
 .cfi_push	%r14
 	push	%r15
 .cfi_push	%r15
+	lea	-8(%rsp),%rsp
+.cfi_adjust_cfa_offset	8
 .Lblocks_avx2_body:
 
 	mov	$len,%r15		# reassign $len
@@ -1511,21 +1521,21 @@ poly1305_blocks_avx2:
 
 	mov	%r15,$len			# restore $len
 
-	mov	0(%rsp),%r15
+	mov	8(%rsp),%r15
 .cfi_restore	%r15
-	mov	8(%rsp),%r14
+	mov	16(%rsp),%r14
 .cfi_restore	%r14
-	mov	16(%rsp),%r13
+	mov	24(%rsp),%r13
 .cfi_restore	%r13
-	mov	24(%rsp),%r12
+	mov	32(%rsp),%r12
 .cfi_restore	%r12
-	mov	32(%rsp),%rbp
+	mov	40(%rsp),%rbp
 .cfi_restore	%rbp
-	mov	40(%rsp),%rbx
+	mov	48(%rsp),%rbx
 .cfi_restore	%rbx
-	lea	48(%rsp),%rax
-	lea	48(%rsp),%rsp
-.cfi_adjust_cfa_offset	-48
+	lea	56(%rsp),%rax			# for win64
+	lea	56(%rsp),%rsp
+.cfi_adjust_cfa_offset	-56
 .Lblocks_avx2_epilogue:
 	jmp	.Ldo_avx2
 .cfi_endproc
@@ -1545,6 +1555,8 @@ poly1305_blocks_avx2:
 .cfi_push	%r14
 	push	%r15
 .cfi_push	%r15
+	lea	-8(%rsp),%rsp
+.cfi_adjust_cfa_offset	8
 .Lbase2_64_avx2_body:
 
 	mov	$len,%r15		# reassign $len
@@ -1607,21 +1619,21 @@ poly1305_blocks_avx2:
 
 	mov	%r15,$len			# restore $len
 
-	mov	0(%rsp),%r15
+	mov	8(%rsp),%r15
 .cfi_restore	%r15
-	mov	8(%rsp),%r14
+	mov	16(%rsp),%r14
 .cfi_restore	%r14
-	mov	16(%rsp),%r13
+	mov	24(%rsp),%r13
 .cfi_restore	%r13
-	mov	24(%rsp),%r12
+	mov	32(%rsp),%r12
 .cfi_restore	%r12
-	mov	32(%rsp),%rbp
+	mov	40(%rsp),%rbp
 .cfi_restore	%rbp
-	mov	40(%rsp),%rbx
+	mov	48(%rsp),%rbx
 .cfi_restore	%rbx
-	lea	48(%rsp),%rax
-	lea	48(%rsp),%rsp
-.cfi_adjust_cfa_offset	-48
+	lea	56(%rsp),%rax			# for inw64
+	lea	56(%rsp),%rsp
+.cfi_adjust_cfa_offset	-56
 .Lbase2_64_avx2_epilogue:
 	jmp	.Ldo_avx2
 .cfi_endproc
@@ -2845,6 +2857,7 @@ poly1305_blocks_base2_44:
 .cfi_restore	%rbx
 	lea	56(%rsp),%rsp
 .cfi_adjust_cfa_offset	-56
+.Lblocks_base2_44_epilogue:
 	ret
 .cfi_endproc
 .size	poly1305_blocks_base2_44,.-poly1305_blocks_base2_44
@@ -4004,7 +4017,7 @@ se_handler:
 	cmp	%r10,%rbx		# context->Rip>=.Lepilogue
 	jae	.Lcommon_seh_tail
 
-	lea	48(%rax),%rax
+	lea	56(%rax),%rax
 
 	mov	-8(%rax),%rbx
 	mov	-16(%rax),%rbp
@@ -4147,13 +4160,34 @@ $code.=<<___ if ($avx>2);
 	.rva	.LSEH_end_poly1305_blocks_avx512
 	.rva	.LSEH_info_poly1305_blocks_avx512
 ___
+$code.=<<___ if ($avx>3);
+	.rva	.LSEH_begin_poly1305_init_base2_44
+	.rva	.LSEH_end_poly1305_init_base2_44
+	.rva	.LSEH_info_poly1305_init_base2_44
+
+	.rva	.LSEH_begin_poly1305_blocks_base2_44
+	.rva	.LSEH_end_poly1305_blocks_base2_44
+	.rva	.LSEH_info_poly1305_blocks_base2_44
+
+	.rva	.LSEH_begin_poly1305_blocks_vpmadd52
+	.rva	.LSEH_end_poly1305_blocks_vpmadd52
+	.rva	.LSEH_info_poly1305_blocks_vpmadd52
+
+	.rva	.LSEH_begin_poly1305_blocks_vpmadd52_4x
+	.rva	.LSEH_end_poly1305_blocks_vpmadd52_4x
+	.rva	.LSEH_info_poly1305_blocks_vpmadd52_4x
+
+	.rva	.LSEH_begin_poly1305_emit_base2_44
+	.rva	.LSEH_end_poly1305_emit_base2_44
+	.rva	.LSEH_info_poly1305_emit_base2_44
+___
 $code.=<<___;
 .section	.xdata
 .align	8
 .LSEH_info_poly1305_init:
 	.byte	9,0,0,0
 	.rva	se_handler
-	.rva	.LSEH_begin_poly1305_init,.LSEH_begin_poly1305_init
+	.long	0,0			# 0,0 means "no stack frame allocated"
 
 .LSEH_info_poly1305_blocks:
 	.byte	9,0,0,0
@@ -4163,7 +4197,7 @@ $code.=<<___;
 .LSEH_info_poly1305_emit:
 	.byte	9,0,0,0
 	.rva	se_handler
-	.rva	.LSEH_begin_poly1305_emit,.LSEH_begin_poly1305_emit
+	.long	0,0
 ___
 $code.=<<___ if ($avx);
 .LSEH_info_poly1305_blocks_avx_1:
@@ -4202,6 +4236,32 @@ $code.=<<___ if ($avx>2);
 	.byte	9,0,0,0
 	.rva	avx_handler
 	.rva	.Ldo_avx512_body,.Ldo_avx512_epilogue		# HandlerData[]
+___
+$code.=<<___ if ($avx>3);
+.LSEH_info_poly1305_init_base2_44:
+	.byte	9,0,0,0
+	.rva	se_handler
+	.long	0,0
+
+.LSEH_info_poly1305_blocks_base2_44:
+	.byte	9,0,0,0
+	.rva	se_handler
+	.rva	.Lblocks_base2_44_body,.Lblocks_base2_44_epilogue
+
+.LSEH_info_poly1305_blocks_vpmadd52:
+	.byte	9,0,0,0
+	.rva	se_handler
+	.long	0,0
+
+.LSEH_info_poly1305_blocks_vpmadd52_4x:
+	.byte	9,0,0,0
+	.rva	se_handler
+	.long	0,0
+
+.LSEH_info_poly1305_emit_base2_44:
+	.byte	9,0,0,0
+	.rva	se_handler
+	.long	0,0
 ___
 }
 
