@@ -1,4 +1,5 @@
 #!/usr/bin/env perl
+# SPDX-License-Identifier: GPL-1.0+ OR BSD-3-Clause
 #
 # ====================================================================
 # Written by Andy Polyakov, @dot-asm, initially for the OpenSSL
