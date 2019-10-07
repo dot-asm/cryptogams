@@ -1,4 +1,5 @@
 #!/usr/bin/env perl
+# SPDX-License-Identifier: GPL-1.0+ OR BSD-3-Clause
 #
 # ====================================================================
 # Written by Andy Polyakov, @dot-asm, originally for the OpenSSL
@@ -59,7 +60,7 @@ $flavour = shift || "64"; # supported flavours are o32,n32,64,nubi32,nubi64
 
 $v0 = ($flavour =~ /nubi/i) ? $a0 : $t0;
 
-if (flavour =~ /64|n32/i) {{{
+if ($flavour =~ /64|n32/i) {{{
 ######################################################################
 # 64-bit code path
 #
@@ -512,7 +513,7 @@ poly1305_emit:
 	jr	$ra
 .end	poly1305_emit
 .rdata
-.asciiz	"Poly1305 for MIPS64, CRYPTOGAMS by <appro\@openssl.org>"
+.asciiz	"Poly1305 for MIPS64, CRYPTOGAMS by \@dot-asm"
 .align	2
 ___
 }
