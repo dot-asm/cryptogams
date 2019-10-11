@@ -13,16 +13,23 @@
 # Numbers are cycles per processed byte with poly1305_blocks alone.
 #
 #		IALU/gcc
-# R1x000	5.64/+120%	(big-endian)
-# Octeon II	3.80/+280%	(little-endian)
+# R1x000	~5.5/+130%	(big-endian)
+# Octeon II	2.50/+70%	(little-endian)
 #
 # March 2019
 #
 # Add 32-bit code path.
 #
+# October 2019
+#
+# Modulo-scheduling reduction allows to omit dependency chain at the
+# end of inner loop and improve performance. Also optimize MIPS32R2
+# code path for MIPS 1004K core. Per René von Dorst's suggestions.
+#
 #		IALU/gcc
-# R1x000	10.3/?		(big-endian)
-# Octeon II	4.64/+90%	(little-endian)
+# R1x000	~9.8/?		(big-endian)
+# Octeon II	3.65/+140%	(little-endian)
+# MT7621/1004K	4.75/?		(little-endian)
 #
 ######################################################################
 # There is a number of MIPS ABI in use, O32 and N32/64 are most
@@ -236,14 +243,16 @@ poly1305_blocks:
 .align	5
 .ent	poly1305_blocks_internal
 poly1305_blocks_internal:
-	.frame	$sp,6*8,$ra
-	.mask	$SAVED_REGS_MASK,-8
 	.set	noreorder
 #if defined(_MIPS_ARCH_MIPS64R6)
+	.frame	$sp,8*8,$ra
+	.mask	$SAVED_REGS_MASK|0x000c0000,-8
 	dsubu	$sp,8*8
 	sd	$s7,56($sp)
 	sd	$s6,48($sp)
 #else
+	.frame	$sp,6*8,$ra
+	.mask	$SAVED_REGS_MASK,-8
 	dsubu	$sp,6*8
 #endif
 	sd	$s5,40($sp)
@@ -258,6 +267,13 @@ ___
 $code.=<<___;
 	.set	reorder
 
+#if defined(_MIPS_ARCH_MIPS64R6)
+	andi	$shr,$inp,7
+	dsubu	$inp,$inp,$shr		# align $inp
+	sll	$shr,$shr,3		# byte to bit offset
+	subu	$shl,$zero,$shr
+#endif
+
 	ld	$h0,0($ctx)		# load hash value
 	ld	$h1,8($ctx)
 	ld	$h2,16($ctx)
@@ -266,20 +282,18 @@ $code.=<<___;
 	ld	$r1,32($ctx)
 	ld	$rs1,40($ctx)
 
-#if defined(_MIPS_ARCH_MIPS64R6)
-	andi	$shr,$inp,7
-	dsubu	$inp,$inp,$shr		# align $inp
-	sll	$shr,$shr,3		# byte to bit offset
-	subu	$shl,$zero,$shr
-#endif
+	dsll	$len,4
+	daddu	$len,$inp		# end of buffer
+	b	.Loop
 
+.align	4
 .Loop:
 #if defined(_MIPS_ARCH_MIPS64R6)
 	ld	$in0,0($inp)		# load input
 	ld	$in1,8($inp)
 	beqz	$shr,.Laligned_inp
-	ld	$tmp2,16($inp)
 
+	ld	$tmp2,16($inp)
 # ifdef	MIPSEB
 	dsllv	$in0,$in0,$shr
 	dsrlv	$tmp3,$in1,$shl
@@ -300,7 +314,6 @@ $code.=<<___;
 	ldr	$in0,0+LSB($inp)
 	ldr	$in1,8+LSB($inp)
 #endif
-	daddiu	$len,-1
 	daddiu	$inp,16
 #ifdef	MIPSEB
 # if defined(_MIPS_ARCH_MIPS64R2)
@@ -344,66 +357,63 @@ $code.=<<___;
 	 or	$in1,$tmp3
 # endif
 #endif
-	daddu	$h0,$in0		# accumulate input
-	daddu	$h1,$in1
-	sltu	$tmp0,$h0,$in0
-	sltu	$tmp1,$h1,$in1
-	daddu	$h1,$tmp0
+	dsrl	$tmp1,$h2,2		# modulo-scheduled reduction
+	andi	$h2,$h2,3
+	dsll	$tmp0,$tmp1,2
 
-	dmultu	($r0,$h0)		# h0*r0
-	 daddu	$h2,$padbit
-	 sltu	$tmp0,$h1,$tmp0
-	mflo	($d0,$r0,$h0)
-	mfhi	($d1,$r0,$h0)
-
-	dmultu	($rs1,$h1)		# h1*5*r1
-	 daddu	$tmp0,$tmp1
-	 daddu	$h2,$tmp0
-	mflo	($tmp0,$rs1,$h1)
-	mfhi	($tmp1,$rs1,$h1)
-
-	dmultu	($r1,$h0)		# h0*r1
-	 daddu	$d0,$tmp0
-	 daddu	$d1,$tmp1
-	mflo	($tmp2,$r1,$h0)
-	mfhi	($d2,$r1,$h0)
-	 sltu	$tmp0,$d0,$tmp0
-	 daddu	$d1,$tmp0
-
-	dmultu	($r0,$h1)		# h1*r0
-	 daddu	$d1,$tmp2
-	 sltu	$tmp2,$d1,$tmp2
-	mflo	($tmp0,$r0,$h1)
-	mfhi	($tmp1,$r0,$h1)
-	 daddu	$d2,$tmp2
-
-	dmultu	($rs1,$h2)		# h2*5*r1
-	 daddu	$d1,$tmp0
-	 daddu	$d2,$tmp1
-	mflo	($tmp2,$rs1,$h2)
-
-	dmultu	($r0,$h2)		# h2*r0
-	 sltu	$tmp0,$d1,$tmp0
-	 daddu	$d2,$tmp0
-	mflo	($tmp3,$r0,$h2)
-
-	daddu	$d1,$tmp2
-	daddu	$d2,$tmp3
-	sltu	$tmp2,$d1,$tmp2
-	daddu	$d2,$tmp2
-
-	li	$tmp0,-4		# final reduction
-	and	$tmp0,$d2
-	dsrl	$tmp1,$d2,2
-	andi	$h2,$d2,3
+	daddu	$d0,$h0,$in0		# accumulate input
+	 daddu	$tmp1,$tmp0
+	sltu	$tmp0,$d0,$h0
+	daddu	$d0,$d0,$tmp1		# ... and residue
+	sltu	$tmp1,$d0,$tmp1
+	daddu	$d1,$h1,$in1
 	daddu	$tmp0,$tmp1
-	daddu	$h0,$d0,$tmp0
-	sltu	$tmp0,$h0,$tmp0
-	daddu	$h1,$d1,$tmp0
-	sltu	$tmp0,$h1,$tmp0
-	daddu	$h2,$h2,$tmp0
+	sltu	$tmp1,$d1,$h1
+	daddu	$d1,$tmp0
 
-	bnez	$len,.Loop
+	dmultu	($r0,$d0)		# h0*r0
+	 daddu	$d2,$h2,$padbit
+	 sltu	$tmp0,$d1,$tmp0
+	mflo	($h0,$r0,$d0)
+	mfhi	($h1,$r0,$d0)
+
+	dmultu	($rs1,$d1)		# h1*5*r1
+	 daddu	$d2,$tmp1
+	 daddu	$d2,$tmp0
+	mflo	($tmp0,$rs1,$d1)
+	mfhi	($tmp1,$rs1,$d1)
+
+	dmultu	($r1,$d0)		# h0*r1
+	mflo	($tmp2,$r1,$d0)
+	mfhi	($h2,$r1,$d0)
+	 daddu	$h0,$tmp0
+	 daddu	$h1,$tmp1
+	 sltu	$tmp0,$h0,$tmp0
+
+	dmultu	($r0,$d1)		# h1*r0
+	 daddu	$h1,$tmp0
+	 daddu	$h1,$tmp2
+	mflo	($tmp0,$r0,$d1)
+	mfhi	($tmp1,$r0,$d1)
+
+	dmultu	($rs1,$d2)		# h2*5*r1
+	 sltu	$tmp2,$h1,$tmp2
+	 daddu	$h2,$tmp2
+	mflo	($tmp2,$rs1,$d2)
+
+	dmultu	($r0,$d2)		# h2*r0
+	 daddu	$h1,$tmp0
+	 daddu	$h2,$tmp1
+	mflo	($tmp3,$r0,$d2)
+	 sltu	$tmp0,$h1,$tmp0
+	 daddu	$h2,$tmp0
+
+	daddu	$h1,$tmp2
+	sltu	$tmp2,$h1,$tmp2
+	daddu	$h2,$tmp2
+	daddu	$h2,$tmp3
+
+	bne	$inp,$len,.Loop
 
 	sd	$h0,0($ctx)		# store hash value
 	sd	$h1,8($ctx)
@@ -444,15 +454,26 @@ poly1305_emit:
 	.frame	$sp,0,$ra
 	.set	reorder
 
+	ld	$tmp2,16($ctx)
 	ld	$tmp0,0($ctx)
 	ld	$tmp1,8($ctx)
-	ld	$tmp2,16($ctx)
 
-	daddiu	$in0,$tmp0,5		# compare to modulus
-	sltiu	$tmp3,$in0,5
-	daddu	$in1,$tmp1,$tmp3
-	sltu	$tmp3,$in1,$tmp3
-	daddu	$tmp2,$tmp2,$tmp3
+	li	$in0,-4			# final reduction
+	dsrl	$in1,$tmp2,2
+	and	$in0,$tmp2
+	andi	$tmp2,$tmp2,3
+	daddu	$in0,$in1
+
+	daddu	$tmp0,$tmp0,$in0
+	sltu	$in1,$tmp0,$in0
+	 daddiu	$in0,$tmp0,5		# compare to modulus
+	daddu	$tmp1,$tmp1,$in1
+	 sltiu	$tmp3,$in0,5
+	sltu	$tmp4,$tmp1,$in1
+	 daddu	$in1,$tmp1,$tmp3
+	daddu	$tmp2,$tmp2,$tmp4
+	 sltu	$tmp3,$in1,$tmp3
+	 daddu	$tmp2,$tmp2,$tmp3
 
 	dsrl	$tmp2,2			# see if it carried/borrowed
 	dsubu	$tmp2,$zero,$tmp2
@@ -714,6 +735,7 @@ my ($h0,$h1,$h2,$h3,$h4, $r0,$r1,$r2,$r3, $rs1,$rs2,$rs3) =
 my ($d0,$d1,$d2,$d3) =
    ($a4,$a5,$a6,$a7);
 my $shr = $t2;		# used on R6
+my $one = $t2;		# used on R2
 
 $code.=<<___;
 .globl	poly1305_blocks
@@ -743,7 +765,14 @@ $code.=<<___;
 	.set	reorder
 
 	srl	$len,4			# number of complete blocks
+	li	$one,1
 	beqz	$len,.Labort
+
+#if defined(_MIPS_ARCH_MIPS32R6)
+	andi	$shr,$inp,3
+	subu	$inp,$inp,$shr		# align $inp
+	sll	$shr,$shr,3		# byte to bit offset
+#endif
 
 	lw	$h0,0($ctx)		# load hash value
 	lw	$h1,4($ctx)
@@ -759,12 +788,11 @@ $code.=<<___;
 	lw	$rs2,40($ctx)
 	lw	$rs3,44($ctx)
 
-#if defined(_MIPS_ARCH_MIPS32R6)
-	andi	$shr,$inp,3
-	subu	$inp,$inp,$shr		# align $inp
-	sll	$shr,$shr,3		# byte to bit offset
-#endif
+	sll	$len,4
+	addu	$len,$len,$inp		# end of buffer
+	b	.Loop
 
+.align	4
 .Loop:
 #if defined(_MIPS_ARCH_MIPS32R6)
 	lw	$d0,0($inp)		# load input
@@ -813,8 +841,6 @@ $code.=<<___;
 	lwr	$d2,8+LSB($inp)
 	lwr	$d3,12+LSB($inp)
 #endif
-	addiu	$len,$len,-1
-	addiu	$inp,$inp,16
 #ifdef	MIPSEB
 # if defined(_MIPS_ARCH_MIPS32R2)
 	wsbh	$d0,$d0			# byte swap
@@ -864,249 +890,235 @@ $code.=<<___;
 	 or	$d3,$t1
 # endif
 #endif
-	addu	$h0,$h0,$d0		# accumulate input
-	sltu	$d0,$h0,$d0		# carry
+	srl	$t0,$h4,2		# modulo-scheduled reduction
+	andi	$h4,$h4,3
+	sll	$at,$t0,2
 
-	addu	$h1,$h1,$d1
-	sltu	$d1,$h1,$d1
-	addu	$h1,$h1,$d0
-	sltu	$d0,$h1,$d0
-	addu	$d1,$d1,$d0		# carry
+	addu	$d0,$d0,$h0		# accumulate input
+	 addu	$t0,$t0,$at
+	sltu	$h0,$d0,$h0
+	addu	$d0,$d0,$t0		# ... and residue
+	sltu	$at,$d0,$t0
 
-	addu	$h2,$h2,$d2
-	sltu	$d2,$h2,$d2
-	addu	$h2,$h2,$d1
-	sltu	$d1,$h2,$d1
-	addu	$d2,$d2,$d1		# carry
+	addu	$d1,$d1,$h1
+	 addu	$h0,$h0,$at		# carry
+	sltu	$h1,$d1,$h1
+	addu	$d1,$d1,$h0
+	sltu	$h0,$d1,$h0
 
-	addu	$h3,$h3,$d3
-	sltu	$d3,$h3,$d3
-	addu	$h3,$h3,$d2
+	addu	$d2,$d2,$h2
+	 addu	$h1,$h1,$h0		# carry
+	sltu	$h2,$d2,$h2
+	addu	$d2,$d2,$h1
+	sltu	$h1,$d2,$h1
+
+	addu	$d3,$d3,$h3
+	 addu	$h2,$h2,$h1		# carry
+	sltu	$h3,$d3,$h3
+	addu	$d3,$d3,$h2
 
 #if defined(_MIPS_ARCH_MIPS32R2) && !defined(_MIPS_ARCH_MIPS32R6)
-	multu	$r0,$h0			# h0*r0
-	maddu	$rs3,$h1		# h1*s3
-	maddu	$rs2,$h2		# h2*s2
-	maddu	$rs1,$h3		# h3*s1
-	mflo	$d0
-	mfhi	$at
-
-	 sltu	$d2,$h3,$d2
-	 addu	$d3,$d3,$d2		# carry
+	multu	$r0,$d0			# d0*r0
+	 sltu	$h2,$d3,$h2
+	maddu	$rs3,$d1		# d1*s3
+	 addu	$h3,$h3,$h2		# carry
+	maddu	$rs2,$d2		# d2*s2
 	 addu	$h4,$h4,$padbit
-	 addu	$h4,$h4,$d3
+	maddu	$rs1,$d3		# d3*s1
+	 addu	$h4,$h4,$h3
+	mfhi	$at
+	mflo	$h0
 
-	multu	$r1,$h0			# h0*r1
-	maddu	$r0,$h1			# h1*r0
-	maddu	$rs3,$h2		# h2*s3
-	maddu	$rs2,$h3		# h3*s2
+	multu	$r1,$d0			# d0*r1
+	maddu	$r0,$d1			# d1*r0
+	maddu	$rs3,$d2		# d2*s3
+	maddu	$rs2,$d3		# d3*s2
 	maddu	$rs1,$h4		# h4*s1
-	mflo	$d1
-	mfhi	$d2
-
-	multu	$r2,$h0			# h0*r2
-	maddu	$r1,$h1			# h1*r1
-	maddu	$r0,$h2			# h2*r0
-	maddu	$rs3,$h3		# h3*s3
-	maddu	$rs2,$h4		# h4*s2
-	 addu	$d1,$d1,$at
-	 sltu	$at,$d1,$at
-	 addu	$at,$d2,$at
-	mflo	$d2
-	mfhi	$d3
-
-	multu	$r3,$h0			# h0*r3
-	maddu	$r2,$h1			# h1*r2
-	maddu	$r1,$h2			# h2*r1
-	maddu	$r0,$h3			# h3*r0
-	maddu	$rs3,$h4		# h4*s3
-	 addu	$d2,$d2,$at
-	 sltu	$at,$d2,$at
-	 addu	$d3,$d3,$at
-	mflo	$h3
+	maddu	$at,$one		# hi*1
 	mfhi	$at
+	mflo	$h1
 
-	multu	$r0,$h4			# h4*r0
-	 addu	$h3,$h3,$d3
-	 sltu	$d3,$h3,$d3
-	 addu	$at,$d3,$at
-	mflo	$h4
+	multu	$r2,$d0			# d0*r2
+	maddu	$r1,$d1			# d1*r1
+	maddu	$r0,$d2			# d2*r0
+	maddu	$rs3,$d3		# d3*s3
+	maddu	$rs2,$h4		# h4*s2
+	maddu	$at,$one		# hi*1
+	mfhi	$at
+	mflo	$h2
 
-	addu	$h4,$at,$h4
+	mul	$t0,$r0,$h4		# h4*r0
+
+	multu	$r3,$d0			# d0*r3
+	maddu	$r2,$d1			# d1*r2
+	maddu	$r1,$d2			# d2*r1
+	maddu	$r0,$d3			# d3*r0
+	maddu	$rs3,$h4		# h4*s3
+	maddu	$at,$one		# hi*1
+	mfhi	$at
+	mflo	$h3
+
+	 addiu	$inp,$inp,16
+
+	addu	$h4,$t0,$at
 #else
-	multu	($r0,$h0)		# h0*r0
-	mflo	($d0,$r0,$h0)
-	mfhi	($d1,$r0,$h0)
+	multu	($r0,$d0)		# d0*r0
+	mflo	($h0,$r0,$d0)
+	mfhi	($h1,$r0,$d0)
 
-	 sltu	$d2,$h3,$d2
-	 addu	$d3,$d3,$d2		# carry
+	 sltu	$h2,$d3,$h2
+	 addu	$h3,$h3,$h2		# carry
 
-	multu	($rs3,$h1)		# h1*s3
-	mflo	($at,$rs3,$h1)
-	mfhi	($t0,$rs3,$h1)
+	multu	($rs3,$d1)		# d1*s3
+	mflo	($at,$rs3,$d1)
+	mfhi	($t0,$rs3,$d1)
 
 	 addu	$h4,$h4,$padbit
-	 addu	$h4,$h4,$d3
+	 addiu	$inp,$inp,16
+	 addu	$h4,$h4,$h3
 
-	multu	($rs2,$h2)		# h2*s2
-	mflo	($a3,$rs2,$h2)
-	mfhi	($t1,$rs2,$h2)
-	 addu	$d0,$d0,$at
-	 addu	$d1,$d1,$t0
-	multu	($rs1,$h3)		# h3*s1
-	 sltu	$at,$d0,$at
-	 addu	$d1,$d1,$at
+	multu	($rs2,$d2)		# d2*s2
+	mflo	($a3,$rs2,$d2)
+	mfhi	($t1,$rs2,$d2)
+	 addu	$h0,$h0,$at
+	 addu	$h1,$h1,$t0
+	multu	($rs1,$d3)		# d3*s1
+	 sltu	$at,$h0,$at
+	 addu	$h1,$h1,$at
 
-	mflo	($at,$rs1,$h3)
-	mfhi	($t0,$rs1,$h3)
-	 addu	$d0,$d0,$a3
-	 addu	$d1,$d1,$t1
-	multu	($r1,$h0)		# h0*r1
-	 sltu	$a3,$d0,$a3
-	 addu	$d1,$d1,$a3
+	mflo	($at,$rs1,$d3)
+	mfhi	($t0,$rs1,$d3)
+	 addu	$h0,$h0,$a3
+	 addu	$h1,$h1,$t1
+	multu	($r1,$d0)		# d0*r1
+	 sltu	$a3,$h0,$a3
+	 addu	$h1,$h1,$a3
 
 
-	mflo	($a3,$r1,$h0)
-	mfhi	($d2,$r1,$h0)
-	 addu	$d0,$d0,$at
-	 addu	$d1,$d1,$t0
-	multu	($r0,$h1)		# h1*r0
-	 sltu	$at,$d0,$at
-	 addu	$d1,$d1,$at
+	mflo	($a3,$r1,$d0)
+	mfhi	($h2,$r1,$d0)
+	 addu	$h0,$h0,$at
+	 addu	$h1,$h1,$t0
+	multu	($r0,$d1)		# d1*r0
+	 sltu	$at,$h0,$at
+	 addu	$h1,$h1,$at
 
-	mflo	($at,$r0,$h1)
-	mfhi	($t0,$r0,$h1)
-	 addu	$d1,$d1,$a3
-	 sltu	$a3,$d1,$a3
-	multu	($rs3,$h2)		# h2*s3
-	 addu	$d2,$d2,$a3
+	mflo	($at,$r0,$d1)
+	mfhi	($t0,$r0,$d1)
+	 addu	$h1,$h1,$a3
+	 sltu	$a3,$h1,$a3
+	multu	($rs3,$d2)		# d2*s3
+	 addu	$h2,$h2,$a3
 
-	mflo	($a3,$rs3,$h2)
-	mfhi	($t1,$rs3,$h2)
-	 addu	$d1,$d1,$at
-	 addu	$d2,$d2,$t0
-	multu	($rs2,$h3)		# h3*s2
-	 sltu	$at,$d1,$at
-	 addu	$d2,$d2,$at
+	mflo	($a3,$rs3,$d2)
+	mfhi	($t1,$rs3,$d2)
+	 addu	$h1,$h1,$at
+	 addu	$h2,$h2,$t0
+	multu	($rs2,$d3)		# d3*s2
+	 sltu	$at,$h1,$at
+	 addu	$h2,$h2,$at
 
-	mflo	($at,$rs2,$h3)
-	mfhi	($t0,$rs2,$h3)
-	 addu	$d1,$d1,$a3
-	 addu	$d2,$d2,$t1
+	mflo	($at,$rs2,$d3)
+	mfhi	($t0,$rs2,$d3)
+	 addu	$h1,$h1,$a3
+	 addu	$h2,$h2,$t1
 	multu	($rs1,$h4)		# h4*s1
-	 sltu	$a3,$d1,$a3
-	 addu	$d2,$d2,$a3
+	 sltu	$a3,$h1,$a3
+	 addu	$h2,$h2,$a3
 
 	mflo	($a3,$rs1,$h4)
-	 addu	$d1,$d1,$at
-	 addu	$d2,$d2,$t0
-	multu	($r2,$h0)		# h0*r2
-	 sltu	$at,$d1,$at
-	 addu	$d2,$d2,$at
+	 addu	$h1,$h1,$at
+	 addu	$h2,$h2,$t0
+	multu	($r2,$d0)		# d0*r2
+	 sltu	$at,$h1,$at
+	 addu	$h2,$h2,$at
 
 
-	mflo	($at,$r2,$h0)
-	mfhi	($d3,$r2,$h0)
-	 addu	$d1,$d1,$a3
-	 sltu	$a3,$d1,$a3
-	multu	($r1,$h1)		# h1*r1
-	 addu	$d2,$d2,$a3
+	mflo	($at,$r2,$d0)
+	mfhi	($h3,$r2,$d0)
+	 addu	$h1,$h1,$a3
+	 sltu	$a3,$h1,$a3
+	multu	($r1,$d1)		# d1*r1
+	 addu	$h2,$h2,$a3
 
-	mflo	($a3,$r1,$h1)
-	mfhi	($t1,$r1,$h1)
-	 addu	$d2,$d2,$at
-	 sltu	$at,$d2,$at
-	multu	($r0,$h2)		# h2*r0
-	 addu	$d3,$d3,$at
+	mflo	($a3,$r1,$d1)
+	mfhi	($t1,$r1,$d1)
+	 addu	$h2,$h2,$at
+	 sltu	$at,$h2,$at
+	multu	($r0,$d2)		# d2*r0
+	 addu	$h3,$h3,$at
 
-	mflo	($at,$r0,$h2)
-	mfhi	($t0,$r0,$h2)
-	 addu	$d2,$d2,$a3
-	 addu	$d3,$d3,$t1
-	multu	($rs3,$h3)		# h3*s3
-	 sltu	$a3,$d2,$a3
-	 addu	$d3,$d3,$a3
+	mflo	($at,$r0,$d2)
+	mfhi	($t0,$r0,$d2)
+	 addu	$h2,$h2,$a3
+	 addu	$h3,$h3,$t1
+	multu	($rs3,$d3)		# d3*s3
+	 sltu	$a3,$h2,$a3
+	 addu	$h3,$h3,$a3
 
-	mflo	($a3,$rs3,$h3)
-	mfhi	($t1,$rs3,$h3)
-	 addu	$d2,$d2,$at
-	 addu	$d3,$d3,$t0
+	mflo	($a3,$rs3,$d3)
+	mfhi	($t1,$rs3,$d3)
+	 addu	$h2,$h2,$at
+	 addu	$h3,$h3,$t0
 	multu	($rs2,$h4)		# h4*s2
-	 sltu	$at,$d2,$at
-	 addu	$d3,$d3,$at
+	 sltu	$at,$h2,$at
+	 addu	$h3,$h3,$at
 
 	mflo	($at,$rs2,$h4)
-	 addu	$d2,$d2,$a3
-	 addu	$d3,$d3,$t1
-	multu	($r3,$h0)		# h0*r3
-	 sltu	$a3,$d2,$a3
-	 addu	$d3,$d3,$a3
+	 addu	$h2,$h2,$a3
+	 addu	$h3,$h3,$t1
+	multu	($r3,$d0)		# d0*r3
+	 sltu	$a3,$h2,$a3
+	 addu	$h3,$h3,$a3
 
 
-	mflo	($a3,$r3,$h0)
-	mfhi	($t1,$r3,$h0)
-	 addu	$d2,$d2,$at
-	 sltu	$at,$d2,$at
-	multu	($r2,$h1)		# h1*r2
-	 addu	$d3,$d3,$at
+	mflo	($a3,$r3,$d0)
+	mfhi	($t1,$r3,$d0)
+	 addu	$h2,$h2,$at
+	 sltu	$at,$h2,$at
+	multu	($r2,$d1)		# d1*r2
+	 addu	$h3,$h3,$at
 
-	mflo	($at,$r2,$h1)
-	mfhi	($t0,$r2,$h1)
-	 addu	$d3,$d3,$a3
-	 sltu	$a3,$d3,$a3
-	multu	($r0,$h3)		# h3*r0
+	mflo	($at,$r2,$d1)
+	mfhi	($t0,$r2,$d1)
+	 addu	$h3,$h3,$a3
+	 sltu	$a3,$h3,$a3
+	multu	($r0,$d3)		# d3*r0
 	 addu	$t1,$t1,$a3
 
-	mflo	($a3,$r0,$h3)
-	mfhi	($h3,$r0,$h3)
-	 addu	$d3,$d3,$at
+	mflo	($a3,$r0,$d3)
+	mfhi	($d3,$r0,$d3)
+	 addu	$h3,$h3,$at
 	 addu	$t1,$t1,$t0
-	multu	($r1,$h2)		# h2*r1
-	 sltu	$at,$d3,$at
+	multu	($r1,$d2)		# d2*r1
+	 sltu	$at,$h3,$at
 	 addu	$t1,$t1,$at
 
-	mflo	($at,$r1,$h2)
-	mfhi	($t0,$r1,$h2)
-	 addu	$d3,$d3,$a3
-	 addu	$t1,$t1,$h3
+	mflo	($at,$r1,$d2)
+	mfhi	($t0,$r1,$d2)
+	 addu	$h3,$h3,$a3
+	 addu	$t1,$t1,$d3
 	multu	($rs3,$h4)		# h4*s3
-	 sltu	$a3,$d3,$a3
+	 sltu	$a3,$h3,$a3
 	 addu	$t1,$t1,$a3
 
 	mflo	($a3,$rs3,$h4)
-	 addu	$d3,$d3,$at
+	 addu	$h3,$h3,$at
 	 addu	$t1,$t1,$t0
 	multu	($r0,$h4)		# h4*r0
-	 sltu	$at,$d3,$at
+	 sltu	$at,$h3,$at
 	 addu	$t1,$t1,$at
 
 
 	mflo	($h4,$r0,$h4)
-	 addu	$h3,$d3,$a3
+	 addu	$h3,$h3,$a3
 	 sltu	$a3,$h3,$a3
 	 addu	$t1,$t1,$a3
-	addu	$h4,$t1,$h4
+	addu	$h4,$h4,$t1
 
 	li	$padbit,1		# if we loop, padbit is 1
 #endif
-
-	li	$at,-4			# final reduction
-	srl	$h0,$h4,2
-	and	$at,$at,$h4
-	andi	$h4,$h4,3
-	addu	$h0,$h0,$at
-
-	addu	$h0,$h0,$d0
-	sltu	$at,$h0,$d0
-	addu	$h1,$d1,$at
-	sltu	$at,$h1,$at
-	addu	$h2,$d2,$at
-	sltu	$at,$h2,$at
-	addu	$h3,$h3,$at
-	sltu	$at,$h3,$at
-	addu	$h4,$h4,$at
-
-	bnez	$len,.Loop
+	bne	$inp,$len,.Loop
 
 	sw	$h0,0($ctx)		# store hash value
 	sw	$h1,4($ctx)
@@ -1148,21 +1160,36 @@ poly1305_emit:
 	.frame	$sp,0,$ra
 	.set	reorder
 
+	lw	$tmp4,16($ctx)
 	lw	$tmp0,0($ctx)
 	lw	$tmp1,4($ctx)
 	lw	$tmp2,8($ctx)
 	lw	$tmp3,12($ctx)
-	lw	$tmp4,16($ctx)
 
-	addiu	$in0,$tmp0,5		# compare to modulus
-	sltiu	$ctx,$in0,5
-	addu	$in1,$tmp1,$ctx
-	sltu	$ctx,$in1,$ctx
-	addu	$in2,$tmp2,$ctx
-	sltu	$ctx,$in2,$ctx
-	addu	$in3,$tmp3,$ctx
-	sltu	$ctx,$in3,$ctx
-	addu	$ctx,$tmp4
+	li	$in0,-4			# final reduction
+	srl	$ctx,$tmp4,2
+	and	$in0,$in0,$tmp4
+	andi	$tmp4,$tmp4,3
+	addu	$ctx,$ctx,$in0
+
+	addu	$tmp0,$tmp0,$ctx
+	sltu	$ctx,$tmp0,$ctx
+	 addiu	$in0,$tmp0,5		# compare to modulus
+	addu	$tmp1,$tmp1,$ctx
+	 sltiu	$in1,$in0,5
+	sltu	$ctx,$tmp1,$ctx
+	 addu	$in1,$in1,$tmp1
+	addu	$tmp2,$tmp2,$ctx
+	 sltu	$in2,$in1,$tmp1
+	sltu	$ctx,$tmp2,$ctx
+	 addu	$in2,$in2,$tmp2
+	addu	$tmp3,$tmp3,$ctx
+	 sltu	$in3,$in2,$tmp2
+	sltu	$ctx,$tmp3,$ctx
+	 addu	$in3,$in3,$tmp3
+	addu	$tmp4,$tmp4,$ctx
+	 sltu	$ctx,$in3,$tmp3
+	 addu	$ctx,$tmp4
 
 	srl	$ctx,2			# see if it carried/borrowed
 	subu	$ctx,$zero,$ctx
@@ -1235,7 +1262,7 @@ poly1305_emit:
 	jr	$ra
 .end	poly1305_emit
 .rdata
-.asciiz	"Poly1305 for MIPS, CRYPTOGAMS by \@dot-asm"
+.asciiz	"Poly1305 for MIPS32, CRYPTOGAMS by \@dot-asm"
 .align	2
 ___
 }
