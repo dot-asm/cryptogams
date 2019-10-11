@@ -24,7 +24,7 @@
 #
 # Modulo-scheduling reduction allows to omit dependency chain at the
 # end of inner loop and improve performance. Also optimize MIPS32R2
-# code path for MIPS 1004K core. Per René von Dorst's suggestions.
+# code path for MIPS 1004K core. Per René van Dorst's suggestions.
 #
 #		IALU/gcc
 # R1x000	~9.8/?		(big-endian)
