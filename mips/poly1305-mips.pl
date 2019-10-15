@@ -13,7 +13,7 @@
 # Numbers are cycles per processed byte with poly1305_blocks alone.
 #
 #		IALU/gcc
-# R1x000	~5.5/+130%	(big-endian)
+# R1x000	5.00/+150%	(big-endian)
 # Octeon II	2.50/+70%	(little-endian)
 #
 # March 2019
@@ -27,9 +27,9 @@
 # code path for MIPS 1004K core. Per René van Dorst's suggestions.
 #
 #		IALU/gcc
-# R1x000	~9.8/?		(big-endian)
+# R1x000	10.0/?		(big-endian)
 # Octeon II	3.65/+140%	(little-endian)
-# MT7621/1004K	4.75/?		(little-endian)
+# MT7621/1004K	4.65/?		(little-endian)
 #
 ######################################################################
 # There is a number of MIPS ABI in use, O32 and N32/64 are most
@@ -742,7 +742,7 @@ $code.=<<___;
 .align	5
 .ent	poly1305_blocks
 poly1305_blocks:
-	.frame	$sp,16*4,$ra
+	.frame	$sp,12*4,$ra
 	.mask	$SAVED_REGS_MASK,-4
 	.set	noreorder
 	subu	$sp, $sp,4*12
