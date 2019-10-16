@@ -298,6 +298,21 @@ my ($in0,$in1,$in2,$in3,$tmp0,$tmp1,$tmp2,$tmp3) =
    ($a4,$a5,$a6,$a7,$t0,$t1,$t2,$t3);
 
 $code.=<<___;
+#if __SIZEOF_SIZE_T__ == 4
+# define PUSH	sw
+# define POP	lw
+# define MULX(hi,lo,a,b)	mulhu hi,a,b; mul lo,a,b
+# define srlw	srl
+# define sllw	sll
+# define addw	add
+# define addiw	addi
+# define mulw	mul
+#else
+# define PUSH	sd
+# define POP	ld
+# define MULX(hi,lo,a,b)	slli b,b,32; srli b,b,32; mul hi,a,b; addiw lo,hi,0; srai hi,hi,32
+#endif
+
 .option	pic
 .text
 
@@ -323,17 +338,17 @@ poly1305_init:
 
 	lw	$tmp2,16($inp)
 	sub	$tmp1,$zero,$tmp0
-	srl	$in0,$in0,$tmp0
-	sll	$tmp3,$in1,$tmp1
-	srl	$in1,$in1,$tmp0
+	srlw	$in0,$in0,$tmp0
+	sllw	$tmp3,$in1,$tmp1
+	srlw	$in1,$in1,$tmp0
 	or	$in0,$in0,$tmp3
-	sll	$tmp3,$in2,$tmp1
-	srl	$in2,$in2,$tmp0
+	sllw	$tmp3,$in2,$tmp1
+	srlw	$in2,$in2,$tmp0
 	or	$in1,$in1,$tmp3
-	sll	$tmp3,$in3,$tmp1
-	srl	$in3,$in3,$tmp0
+	sllw	$tmp3,$in3,$tmp1
+	srlw	$in3,$in3,$tmp0
 	or	$in2,$in2,$tmp3
-	sll	$tmp2,$tmp2,$tmp1
+	sllw	$tmp2,$tmp2,$tmp1
 	or	$in3,$in3,$tmp2
 .Laligned_key:
 
@@ -350,12 +365,12 @@ poly1305_init:
 	sw	$in2,28($ctx)
 	sw	$in3,32($ctx)
 
-	srl	$tmp1,$in1,2
-	srl	$tmp2,$in2,2
-	srl	$tmp3,$in3,2
-	add	$in1,$in1,$tmp1		# s1 = r1 + (r1 >> 2)
-	add	$in2,$in2,$tmp2
-	add	$in3,$in3,$tmp3
+	srlw	$tmp1,$in1,2
+	srlw	$tmp2,$in2,2
+	srlw	$tmp3,$in3,2
+	addw	$in1,$in1,$tmp1		# s1 = r1 + (r1 >> 2)
+	addw	$in2,$in2,$tmp2
+	addw	$in3,$in3,$tmp3
 	sw	$in1,36($ctx)
 	sw	$in2,40($ctx)
 	sw	$in3,44($ctx)
@@ -376,18 +391,19 @@ $code.=<<___;
 .type	poly1305_blocks,\@function
 poly1305_blocks:
 	srli	$len,$len,4		# number of complete blocks
-	bnez	$len,.Labort
-	addi	$sp,$sp,-4*12
-	sw	$ra, 4*11($sp)
-	sw	$s0, 4*10($sp)
-	sw	$s1, 4*9($sp)
-	sw	$s2, 4*8($sp)
-	sw	$s3, 4*7($sp)
-	sw	$s4, 4*6($sp)
-	sw	$s5, 4*5($sp)
-	sw	$s6, 4*4($sp)
-	sw	$s7, 4*3($sp)
-	sw	$s8, 4*2($sp)
+	beqz	$len,.Labort
+
+	addi	$sp,$sp,-__SIZEOF_SIZE_T__*12
+	PUSH	$ra, __SIZEOF_SIZE_T__*11($sp)
+	PUSH	$s0, __SIZEOF_SIZE_T__*10($sp)
+	PUSH	$s1, __SIZEOF_SIZE_T__*9($sp)
+	PUSH	$s2, __SIZEOF_SIZE_T__*8($sp)
+	PUSH	$s3, __SIZEOF_SIZE_T__*7($sp)
+	PUSH	$s4, __SIZEOF_SIZE_T__*6($sp)
+	PUSH	$s5, __SIZEOF_SIZE_T__*5($sp)
+	PUSH	$s6, __SIZEOF_SIZE_T__*4($sp)
+	PUSH	$s7, __SIZEOF_SIZE_T__*3($sp)
+	PUSH	$s8, __SIZEOF_SIZE_T__*2($sp)
 
 	andi	$shr,$inp,3
 	andi	$inp,$inp,-8		# align $inp
@@ -419,180 +435,164 @@ poly1305_blocks:
 
 	lw	$t4,16($inp)
 	sub	$t5,$zero,$shr
-	srl	$d0,$d0,$shr
-	sll	$t3,$d1,$t5
-	srl	$d1,$d1,$shr
+	srlw	$d0,$d0,$shr
+	sllw	$t3,$d1,$t5
+	srlw	$d1,$d1,$shr
 	or	$d0,$d0,$t3
-	sll	$t3,$d2,$t5
-	srl	$d2,$d2,$shr
+	sllw	$t3,$d2,$t5
+	srlw	$d2,$d2,$shr
 	or	$d1,$d1,$t3
-	sll	$t3,$d3,$t5
-	srl	$d3,$d3,$shr
+	sllw	$t3,$d3,$t5
+	srlw	$d3,$d3,$shr
 	or	$d2,$d2,$t3
-	sll	$t4,$t4,$t5
+	sllw	$t4,$t4,$t5
 	or	$d3,$d3,$t4
 
 .Laligned_inp:
-	srli	$t0,$h4,2		# modulo-scheduled reduction
-	andi	$t1,$h4,-4
+	srli	$t3,$h4,2		# modulo-scheduled reduction
+	andi	$t4,$h4,-4
 	andi	$h4,$h4,3
 
-	add	$d0,$d0,$h0		# accumulate input
-	 add	$t0,$t0,$t1
+	addw	$d0,$d0,$h0		# accumulate input
+	 addw	$t4,$t4,$t3
 	sltu	$h0,$d0,$h0
-	add	$d0,$d0,$t0		# ... and residue
-	sltu	$t0,$d0,$t0
+	addw	$d0,$d0,$t4		# ... and residue
+	sltu	$t4,$d0,$t4
 
-	add	$d1,$d1,$h1
-	 add	$h0,$h0,$t0		# carry
+	addw	$d1,$d1,$h1
+	 addw	$h0,$h0,$t4		# carry
 	sltu	$h1,$d1,$h1
-	add	$d1,$d1,$h0
+	addw	$d1,$d1,$h0
 	sltu	$h0,$d1,$h0
 
-	add	$d2,$d2,$h2
-	 add	$h1,$h1,$h0		# carry
+	addw	$d2,$d2,$h2
+	 addw	$h1,$h1,$h0		# carry
 	sltu	$h2,$d2,$h2
-	add	$d2,$d2,$h1
+	addw	$d2,$d2,$h1
 	sltu	$h1,$d2,$h1
 
-	add	$d3,$d3,$h3
-	 add	$h2,$h2,$h1		# carry
+	addw	$d3,$d3,$h3
+	 addw	$h2,$h2,$h1		# carry
 	sltu	$h3,$d3,$h3
-	add	$d3,$d3,$h2
+	addw	$d3,$d3,$h2
 
-	mulhu	$h1,$r0,$d0		# d0*r0
-	mul	$h0,$r0,$d0
+	MULX	($h1,$h0,$r0,$d0)	# d0*r0
 
 	 sltu	$h2,$d3,$h2
-	 add	$h3,$h3,$h2		# carry
+	 addw	$h3,$h3,$h2		# carry
 
-	mulhu	$t4,$rs3,$d1		# d1*s3
-	mul	$t3,$rs3,$d1
+	MULX	($t4,$t3,$rs3,$d1)	# d1*s3
 
-	 add	$h4,$h4,$padbit
+	 addw	$h4,$h4,$padbit
 	 addi	$inp,$inp,16
-	 add	$h4,$h4,$h3
+	 addw	$h4,$h4,$h3
 
-	mulhu	$t6,$rs2,$d2		# d2*s2
-	mul	$a3,$rs2,$d2
-	 add	$h0,$h0,$t3
-	 add	$h1,$h1,$t4
+	MULX	($t6,$a3,$rs2,$d2)	# d2*s2
+	 addw	$h0,$h0,$t3
+	 addw	$h1,$h1,$t4
 	 sltu	$t3,$h0,$t3
-	 add	$h1,$h1,$t3
+	 addw	$h1,$h1,$t3
 
-	mulhu	$t4,$rs1,$d3		# d3*s1
-	mul	$t3,$rs1,$d3
-	 add	$h0,$h0,$a3
-	 add	$h1,$h1,$t6
+	MULX	($t4,$t3,$rs1,$d3)	# d3*s1
+	 addw	$h0,$h0,$a3
+	 addw	$h1,$h1,$t6
 	 sltu	$a3,$h0,$a3
-	 add	$h1,$h1,$a3
+	 addw	$h1,$h1,$a3
 
 
-	mulhu	$h2,$r1,$d0		# d0*r1
-	mul	$a3,$r1,$d0
-	 add	$h0,$h0,$t3
-	 add	$h1,$h1,$t4
+	MULX	($h2,$a3,$r1,$d0)	# d0*r1
+	 addw	$h0,$h0,$t3
+	 addw	$h1,$h1,$t4
 	 sltu	$t3,$h0,$t3
-	 add	$h1,$h1,$t3
+	 addw	$h1,$h1,$t3
 
-	mulhu	$t4,$r0,$d1		# d1*r0
-	mul	$t3,$r0,$d1
-	 add	$h1,$h1,$a3
+	MULX	($t4,$t3,$r0,$d1)	# d1*r0
+	 addw	$h1,$h1,$a3
 	 sltu	$a3,$h1,$a3
-	 add	$h2,$h2,$a3
+	 addw	$h2,$h2,$a3
 
-	mulhu	$a3,$rs3,$d2		# d2*s3
-	mul	$t6,$rs3,$d2
-	 add	$h1,$h1,$t3
-	 add	$h2,$h2,$t4
+	MULX	($t6,$a3,$rs3,$d2)	# d2*s3
+	 addw	$h1,$h1,$t3
+	 addw	$h2,$h2,$t4
 	 sltu	$t3,$h1,$t3
-	 add	$h2,$h2,$t3
+	 addw	$h2,$h2,$t3
 
-	mulhu	$t4,$rs2,$d3		# d3*s2
-	mul	$t3,$rs2,$d3
-	 add	$h1,$h1,$a3
-	 add	$h2,$h2,$t6
+	MULX	($t4,$t3,$rs2,$d3)	# d3*s2
+	 addw	$h1,$h1,$a3
+	 addw	$h2,$h2,$t6
 	 sltu	$a3,$h1,$a3
-	 add	$h2,$h2,$a3
+	 addw	$h2,$h2,$a3
 
-	mul	$a3,$rs1,$h4		# h4*s1
-	 add	$h1,$h1,$t3
-	 add	$h2,$h2,$t4
+	mulw	$a3,$rs1,$h4		# h4*s1
+	 addw	$h1,$h1,$t3
+	 addw	$h2,$h2,$t4
 	 sltu	$t3,$h1,$t3
-	 add	$h2,$h2,$t3
+	 addw	$h2,$h2,$t3
 
 
-	mulhu	$h3,$r2,$d0		# d0*r2
-	mul	$t3,$r2,$d0
-	 add	$h1,$h1,$a3
+	MULX	($h3,$t3,$r2,$d0)	# d0*r2
+	 addw	$h1,$h1,$a3
 	 sltu	$a3,$h1,$a3
-	 add	$h2,$h2,$a3
+	 addw	$h2,$h2,$a3
 
-	mulhu	$t6,$r1,$d1		# d1*r1
-	mul	$a3,$r1,$d1
-	 add	$h2,$h2,$t3
+	MULX	($t6,$a3,$r1,$d1)	# d1*r1
+	 addw	$h2,$h2,$t3
 	 sltu	$t3,$h2,$t3
-	 add	$h3,$h3,$t3
+	 addw	$h3,$h3,$t3
 
-	mulhu	$t4,$r0,$d2		# d2*r0
-	mul	$t3,$r0,$d2
-	 add	$h2,$h2,$a3
-	 add	$h3,$h3,$t6
+	MULX	($t4,$t3,$r0,$d2)	# d2*r0
+	 addw	$h2,$h2,$a3
+	 addw	$h3,$h3,$t6
 	 sltu	$a3,$h2,$a3
-	 add	$h3,$h3,$a3
+	 addw	$h3,$h3,$a3
 
-	mulhu	$t6,$rs3,$d3		# d3*s3
-	mul	$a3,$rs3,$d3
-	 add	$h2,$h2,$t3
-	 add	$h3,$h3,$t4
+	MULX	($t6,$a3,$rs3,$d3)	# d3*s3
+	 addw	$h2,$h2,$t3
+	 addw	$h3,$h3,$t4
 	 sltu	$t3,$h2,$t3
-	 add	$h3,$h3,$t3
+	 addw	$h3,$h3,$t3
 
-	mul	$t3,$rs2,$h4		# h4*s2
-	 add	$h2,$h2,$a3
-	 add	$h3,$h3,$t6
+	mulw	$t3,$rs2,$h4		# h4*s2
+	 addw	$h2,$h2,$a3
+	 addw	$h3,$h3,$t6
 	 sltu	$a3,$h2,$a3
-	 add	$h3,$h3,$a3
+	 addw	$h3,$h3,$a3
 
 
-	mulhu	$t6,$r3,$d0		# d0*r3
-	mul	$a3,$r3,$d0
-	 add	$h2,$h2,$t3
+	MULX	($t6,$a3,$r3,$d0)	# d0*r3
+	 addw	$h2,$h2,$t3
 	 sltu	$t3,$h2,$t3
-	 add	$h3,$h3,$t3
+	 addw	$h3,$h3,$t3
 
-	mulhu	$t4,$r2,$d1		# d1*r2
-	mul	$t3,$r2,$d1
-	 add	$h3,$h3,$a3
+	MULX	($t4,$t3,$r2,$d1)	# d1*r2
+	 addw	$h3,$h3,$a3
 	 sltu	$a3,$h3,$a3
-	 add	$t6,$t6,$a3
+	 addw	$t6,$t6,$a3
 
-	mulhu	$a3,$r0,$d3		# d3*r0
-	mul	$d3,$r0,$d3
-	 add	$h3,$h3,$t3
-	 add	$t6,$t6,$t4
+	MULX	($a3,$d3,$r0,$d3)	# d3*r0
+	 addw	$h3,$h3,$t3
+	 addw	$t6,$t6,$t4
 	 sltu	$t3,$h3,$t3
-	 add	$t6,$t6,$t3
+	 addw	$t6,$t6,$t3
 
-	mulhu	$t4,$r1,$d2		# d2*r1
-	mul	$t3,$r1,$d2
-	 add	$h3,$h3,$d3
-	 add	$t6,$t6,$a3
+	MULX	($t4,$t3,$r1,$d2)	# d2*r1
+	 addw	$h3,$h3,$d3
+	 addw	$t6,$t6,$a3
 	 sltu	$d3,$h3,$d3
-	 add	$t6,$t6,$d3
+	 addw	$t6,$t6,$d3
 
-	mul	$a3,$rs3,$h4		# h4*s3
-	 add	$h3,$h3,$t3
-	 add	$t6,$t6,$t4
+	mulw	$a3,$rs3,$h4		# h4*s3
+	 addw	$h3,$h3,$t3
+	 addw	$t6,$t6,$t4
 	 sltu	$t3,$h3,$t3
-	 add	$t6,$t6,$t3
+	 addw	$t6,$t6,$t3
 
 
-	mul	$h4,$r0,$h4		# h4*r0
-	 add	$h3,$h3,$a3
+	mulw	$h4,$r0,$h4		# h4*r0
+	 addw	$h3,$h3,$a3
 	 sltu	$a3,$h3,$a3
-	 add	$t6,$t6,$a3
-	add	$h4,$t6,$h4
+	 addw	$t6,$t6,$a3
+	addw	$h4,$t6,$h4
 
 	li	$padbit,1		# if we loop, padbit is 1
 
@@ -604,16 +604,17 @@ poly1305_blocks:
 	sw	$h3,12($ctx)
 	sw	$h4,16($ctx)
 
-	lw	$ra, 4*11($sp)
-	lw	$s0, 4*10($sp)
-	lw	$s1, 4*9($sp)
-	lw	$s2, 4*8($sp)
-	lw	$s3, 4*7($sp)
-	lw	$s4, 4*6($sp)
-	lw	$s5, 4*5($sp)
-	lw	$s6, 4*4($sp)
-	lw	$s7, 4*3($sp)
-	addi	$sp,$sp,4*12
+	POP	$ra, __SIZEOF_SIZE_T__*11($sp)
+	POP	$s0, __SIZEOF_SIZE_T__*10($sp)
+	POP	$s1, __SIZEOF_SIZE_T__*9($sp)
+	POP	$s2, __SIZEOF_SIZE_T__*8($sp)
+	POP	$s3, __SIZEOF_SIZE_T__*7($sp)
+	POP	$s4, __SIZEOF_SIZE_T__*6($sp)
+	POP	$s5, __SIZEOF_SIZE_T__*5($sp)
+	POP	$s6, __SIZEOF_SIZE_T__*4($sp)
+	POP	$s7, __SIZEOF_SIZE_T__*3($sp)
+	POP	$s8, __SIZEOF_SIZE_T__*2($sp)
+	addi	$sp,$sp,__SIZEOF_SIZE_T__*12
 .Labort:
 	ret
 .size	poly1305_blocks,.-poly1305_blocks
@@ -632,29 +633,29 @@ poly1305_emit:
 	lw	$tmp2,8($ctx)
 	lw	$tmp3,12($ctx)
 
-	srl	$ctx,$tmp4,2		# final reduction
-	andi	$in0,$tmp4,4
+	srli	$ctx,$tmp4,2		# final reduction
+	andi	$in0,$tmp4,-4
 	andi	$tmp4,$tmp4,3
-	add	$ctx,$ctx,$in0
+	addw	$ctx,$ctx,$in0
 
-	add	$tmp0,$tmp0,$ctx
+	addw	$tmp0,$tmp0,$ctx
 	sltu	$ctx,$tmp0,$ctx
-	 addi	$in0,$tmp0,5		# compare to modulus
-	add	$tmp1,$tmp1,$ctx
+	 addiw	$in0,$tmp0,5		# compare to modulus
+	addw	$tmp1,$tmp1,$ctx
 	 sltiu	$in1,$in0,5
 	sltu	$ctx,$tmp1,$ctx
-	 add	$in1,$in1,$tmp1
-	add	$tmp2,$tmp2,$ctx
+	 addw	$in1,$in1,$tmp1
+	addw	$tmp2,$tmp2,$ctx
 	 sltu	$in2,$in1,$tmp1
 	sltu	$ctx,$tmp2,$ctx
-	 add	$in2,$in2,$tmp2
-	add	$tmp3,$tmp3,$ctx
+	 addw	$in2,$in2,$tmp2
+	addw	$tmp3,$tmp3,$ctx
 	 sltu	$in3,$in2,$tmp2
 	sltu	$ctx,$tmp3,$ctx
-	 add	$in3,$in3,$tmp3
-	add	$tmp4,$tmp4,$ctx
+	 addw	$in3,$in3,$tmp3
+	addw	$tmp4,$tmp4,$ctx
 	 sltu	$ctx,$in3,$tmp3
-	 add	$ctx,$ctx,$tmp4
+	 addw	$ctx,$ctx,$tmp4
 
 	srl	$ctx,$ctx,2		# see if it carried/borrowed
 	sub	$ctx,$zero,$ctx
@@ -677,23 +678,23 @@ poly1305_emit:
 	lw	$tmp2,8($nonce)
 	lw	$tmp3,12($nonce)
 
-	add	$in0,$in0,$tmp0		# accumulate nonce
+	addw	$in0,$in0,$tmp0		# accumulate nonce
 	sltu	$ctx,$in0,$tmp0
 
-	add	$in1,$in1,$tmp1
+	addw	$in1,$in1,$tmp1
 	sltu	$tmp1,$in1,$tmp1
-	add	$in1,$in1,$ctx
+	addw	$in1,$in1,$ctx
 	sltu	$ctx,$in1,$ctx
-	add	$ctx,$ctx,$tmp1
+	addw	$ctx,$ctx,$tmp1
 
-	add	$in2,$in2,$tmp2
+	addw	$in2,$in2,$tmp2
 	sltu	$tmp2,$in2,$tmp2
-	add	$in2,$in2,$ctx
+	addw	$in2,$in2,$ctx
 	sltu	$ctx,$in2,$ctx
-	add	$ctx,$ctx,$tmp2
+	addw	$ctx,$ctx,$tmp2
 
-	add	$in3,$in3,$tmp3
-	add	$in3,$in3,$ctx
+	addw	$in3,$in3,$tmp3
+	addw	$in3,$in3,$ctx
 
 	srl	$tmp0,$in0,8		# write mac value
 	srl	$tmp1,$in0,16
@@ -733,4 +734,3 @@ ___
 
 print $code;
 close STDOUT;
-
