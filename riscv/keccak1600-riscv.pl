@@ -790,17 +790,6 @@ ___
 # 32-bit code path
 #
 
-my  $PUSH = "sw";
-my  $POP  = "lw";
-my  $SRL  = "srl";
-my  $SIZE_T = 4;
-if (0) {		# test/debug 32-bit code on 64-bit platform
-    $PUSH = "sd";
-    $POP  = "ld";
-    $SRL  = "srlw";
-    $SIZE_T = 8;
-}
-
 my @A = map([ 8*$_, 8*($_+1), 8*($_+2), 8*($_+3), 8*($_+4) ], (0,5,10,15,20));
 
 my @C = map("x$_", (12..21));
@@ -808,6 +797,16 @@ my @D = map("x$_", (22..31));
 my @T = map("x$_", (6..9));
 
 $code.=<<___;
+#if __SIZEOF_SIZE_T__ == 4
+# define PUSH	sw
+# define POP	lw
+# define srlw	srl
+# define sllw	sll
+#else
+# define PUSH	sd
+# define POP	ld
+#endif
+
 .text
 
 .option	pic
@@ -815,7 +814,7 @@ $code.=<<___;
 .type	__KeccakF1600, \@function
 __KeccakF1600:
 	addi	$sp, $sp, -224
-	$PUSH	$ra, 224-$SIZE_T*1($sp)
+	PUSH	$ra, 224-__SIZEOF_SIZE_T__*1($sp)
 
 	mv	$a1, $sp
 	lla	$ra, iotas
@@ -912,31 +911,31 @@ __KeccakF1600:
 	xor	@C[8], @C[8], @D[8]
 	xor	@C[9], @C[9], @D[9]
 
-	$SRL	@T[0], @C[5], 31
+	srlw	@T[0], @C[5], 31
 	add	@D[2], @C[5], @C[5]
 	or	@D[2], @D[2], @T[0]
 	xor	@D[3], @C[4], @C[1]
 	xor	@D[2], @D[2], @C[0]	# D[1] = ROL64(C[2], 1) ^ C[0];
 
-	$SRL	@T[1], @C[7], 31
+	srlw	@T[1], @C[7], 31
 	add	@D[4], @C[7], @C[7]
 	or	@D[4], @D[4], @T[1]
 	xor	@D[5], @C[6], @C[3]
 	xor	@D[4], @D[4], @C[2]	# D[2] = ROL64(C[3], 1) ^ C[1];
 
-	$SRL	@T[0], @C[9], 31
+	srlw	@T[0], @C[9], 31
 	add	@D[6], @C[9], @C[9]
 	or	@D[6], @D[6], @T[0]
 	xor	@D[7], @C[8], @C[5]
 	xor	@D[6], @D[6], @C[4]	# D[3] = ROL64(C[4], 1) ^ C[2];
 
-	$SRL	@T[1], @C[1], 31
+	srlw	@T[1], @C[1], 31
 	add	@D[8], @C[1], @C[1]
 	or	@D[8], @D[8], @T[1]
 	xor	@D[9], @C[0], @C[7]
 	xor	@D[8], @D[8], @C[6]	# D[4] = ROL64(C[0], 1) ^ C[3];
 
-	$SRL	@T[0], @C[3], 31
+	srlw	@T[0], @C[3], 31
 	add	@D[0], @C[3], @C[3]
 	or	@D[0], @D[0], @T[0]
 	xor	@D[1], @C[2], @C[9]
@@ -966,28 +965,28 @@ __KeccakF1600:
 	xor	@C[8], @C[8], @D[8]
 	xor	@C[9], @C[9], @D[9]
 
-	$SRL	@T[0], @C[2], 32-22
-	sll	@C[2], @C[2], 22
-	$SRL	@T[1], @C[3], 32-22
-	sll	@C[3], @C[3], 22
+	srlw	@T[0], @C[2], 32-22
+	sllw	@C[2], @C[2], 22
+	srlw	@T[1], @C[3], 32-22
+	sllw	@C[3], @C[3], 22
 	or	@C[2], @C[2], @T[0]
 	or	@C[3], @C[3], @T[1]
-	$SRL	@T[0], @C[4], 31-21
-	sll	@C[4], @C[4], 22
-	$SRL	@T[1], @C[5], 32-21
-	sll	@C[5], @C[5], 21
+	srlw	@T[0], @C[4], 31-21
+	sllw	@C[4], @C[4], 22
+	srlw	@T[1], @C[5], 32-21
+	sllw	@C[5], @C[5], 21
 	or	@C[4], @C[4], @T[0]
 	or	@C[5], @C[5], @T[1]
-	$SRL	@T[0], @C[6], 31-10
-	sll	@C[6], @C[6], 11
-	$SRL	@T[1], @C[7], 32-10
-	sll	@C[7], @C[7], 10
+	srlw	@T[0], @C[6], 31-10
+	sllw	@C[6], @C[6], 11
+	srlw	@T[1], @C[7], 32-10
+	sllw	@C[7], @C[7], 10
 	or	@C[6], @C[6], @T[0]
 	or	@C[7], @C[7], @T[1]
-	$SRL	@T[0], @C[8], 32-7
-	sll	@C[8], @C[8], 7
-	$SRL	@T[1], @C[9], 32-7
-	sll	@C[9], @C[9], 7
+	srlw	@T[0], @C[8], 32-7
+	sllw	@C[8], @C[8], 7
+	srlw	@T[1], @C[9], 32-7
+	sllw	@C[9], @C[9], 7
 	or	@C[8], @C[8], @T[0]
 	or	@C[9], @C[9], @T[1]
 
@@ -1047,34 +1046,34 @@ __KeccakF1600:
 	xor	@C[8], @C[8], @D[5]	# flip order
 	xor	@C[9], @C[9], @D[4]
 
-	$SRL	@T[0], @C[0], 32-14
-	sll	@C[0], @C[0], 14
-	$SRL	@T[1], @C[1], 32-14
-	sll	@C[1], @C[1], 14
+	srlw	@T[0], @C[0], 32-14
+	sllw	@C[0], @C[0], 14
+	srlw	@T[1], @C[1], 32-14
+	sllw	@C[1], @C[1], 14
 	or	@C[0], @C[0], @T[0]
 	or	@C[1], @C[1], @T[1]
-	$SRL	@T[0], @C[2], 32-10
-	sll	@C[2], @C[2], 10
-	$SRL	@T[1], @C[3], 32-10
-	sll	@C[3], @C[3], 10
+	srlw	@T[0], @C[2], 32-10
+	sllw	@C[2], @C[2], 10
+	srlw	@T[1], @C[3], 32-10
+	sllw	@C[3], @C[3], 10
 	or	@C[2], @C[2], @T[0]
 	or	@C[3], @C[3], @T[1]
-	$SRL	@T[0], @C[4], 31-1
-	sll	@C[4], @C[4], 2
-	$SRL	@T[1], @C[5], 32-1
-	sll	@C[5], @C[5], 1
+	srlw	@T[0], @C[4], 31-1
+	sllw	@C[4], @C[4], 2
+	srlw	@T[1], @C[5], 32-1
+	sllw	@C[5], @C[5], 1
 	or	@C[4], @C[4], @T[0]
 	or	@C[5], @C[5], @T[1]
-	$SRL	@T[0], @C[6], 31-22
-	sll	@C[6], @C[6], 23
-	$SRL	@T[1], @C[7], 32-22
-	sll	@C[7], @C[7], 22
+	srlw	@T[0], @C[6], 31-22
+	sllw	@C[6], @C[6], 23
+	srlw	@T[1], @C[7], 32-22
+	sllw	@C[7], @C[7], 22
 	or	@C[6], @C[6], @T[0]
 	or	@C[7], @C[7], @T[1]
-	$SRL	@T[0], @C[8], 31-30
-	sll	@C[8], @C[8], 31
-	$SRL	@T[1], @C[9], 32-30
-	sll	@C[9], @C[9], 30
+	srlw	@T[0], @C[8], 31-30
+	sllw	@C[8], @C[8], 31
+	srlw	@T[1], @C[9], 32-30
+	sllw	@C[9], @C[9], 30
 	or	@C[8], @C[8], @T[0]
 	or	@C[9], @C[9], @T[1]
 
@@ -1132,34 +1131,34 @@ __KeccakF1600:
 	xor	@C[8], @C[8], @D[0]
 	xor	@C[9], @C[9], @D[1]
 
-	$SRL	@T[0], @C[0], 31-0
-	sll	@C[0], @C[0], 1
-	#$SRL	@T[1], @C[1], 32-0
-	#sll	@C[1], @C[1], 0
+	srlw	@T[0], @C[0], 31-0
+	sllw	@C[0], @C[0], 1
+	#srlw	@T[1], @C[1], 32-0
+	#sllw	@C[1], @C[1], 0
 	or	@C[0], @C[0], @T[0]
 	#or	@C[1], @C[1], @T[1]
-	$SRL	@T[0], @C[2], 32-3
-	sll	@C[2], @C[2], 3
-	$SRL	@T[1], @C[3], 32-3
-	sll	@C[3], @C[3], 3
+	srlw	@T[0], @C[2], 32-3
+	sllw	@C[2], @C[2], 3
+	srlw	@T[1], @C[3], 32-3
+	sllw	@C[3], @C[3], 3
 	or	@C[2], @C[2], @T[0]
 	or	@C[3], @C[3], @T[1]
-	$SRL	@T[0], @C[4], 31-12
-	sll	@C[4], @C[4], 13
-	$SRL	@T[1], @C[5], 32-12
-	sll	@C[5], @C[5], 12
+	srlw	@T[0], @C[4], 31-12
+	sllw	@C[4], @C[4], 13
+	srlw	@T[1], @C[5], 32-12
+	sllw	@C[5], @C[5], 12
 	or	@C[4], @C[4], @T[0]
 	or	@C[5], @C[5], @T[1]
-	$SRL	@T[0], @C[6], 32-4
-	sll	@C[6], @C[6], 4
-	$SRL	@T[1], @C[7], 32-4
-	sll	@C[7], @C[7], 4
+	srlw	@T[0], @C[6], 32-4
+	sllw	@C[6], @C[6], 4
+	srlw	@T[1], @C[7], 32-4
+	sllw	@C[7], @C[7], 4
 	or	@C[6], @C[6], @T[0]
 	or	@C[7], @C[7], @T[1]
-	$SRL	@T[0], @C[8], 32-9
-	sll	@C[8], @C[8], 9
-	$SRL	@T[1], @C[9], 32-9
-	sll	@C[9], @C[9], 9
+	srlw	@T[0], @C[8], 32-9
+	sllw	@C[8], @C[8], 9
+	srlw	@T[1], @C[9], 32-9
+	sllw	@C[9], @C[9], 9
 	or	@C[8], @C[8], @T[0]
 	or	@C[9], @C[9], @T[1]
 
@@ -1217,34 +1216,34 @@ __KeccakF1600:
 	xor	@C[8], @C[8], @D[6]
 	xor	@C[9], @C[9], @D[7]
 
-	$SRL	@T[0], @C[0], 31-13
-	sll	@C[0], @C[0], 14
-	$SRL	@T[1], @C[1], 32-13
-	sll	@C[1], @C[1], 13
+	srlw	@T[0], @C[0], 31-13
+	sllw	@C[0], @C[0], 14
+	srlw	@T[1], @C[1], 32-13
+	sllw	@C[1], @C[1], 13
 	or	@C[0], @C[0], @T[0]
 	or	@C[1], @C[1], @T[1]
-	$SRL	@T[0], @C[2], 32-18
-	sll	@C[2], @C[2], 18
-	$SRL	@T[1], @C[3], 32-18
-	sll	@C[3], @C[3], 18
+	srlw	@T[0], @C[2], 32-18
+	sllw	@C[2], @C[2], 18
+	srlw	@T[1], @C[3], 32-18
+	sllw	@C[3], @C[3], 18
 	or	@C[2], @C[2], @T[0]
 	or	@C[3], @C[3], @T[1]
-	$SRL	@T[0], @C[4], 32-5
-	sll	@C[4], @C[4], 5
-	$SRL	@T[1], @C[5], 32-5
-	sll	@C[5], @C[5], 5
+	srlw	@T[0], @C[4], 32-5
+	sllw	@C[4], @C[4], 5
+	srlw	@T[1], @C[5], 32-5
+	sllw	@C[5], @C[5], 5
 	or	@C[4], @C[4], @T[0]
 	or	@C[5], @C[5], @T[1]
-	$SRL	@T[0], @C[6], 31-7
-	sll	@C[6], @C[6], 8
-	$SRL	@T[1], @C[7], 32-7
-	sll	@C[7], @C[7], 7
+	srlw	@T[0], @C[6], 31-7
+	sllw	@C[6], @C[6], 8
+	srlw	@T[1], @C[7], 32-7
+	sllw	@C[7], @C[7], 7
 	or	@C[6], @C[6], @T[0]
 	or	@C[7], @C[7], @T[1]
-	$SRL	@T[0], @C[8], 32-28
-	sll	@C[8], @C[8], 28
-	$SRL	@T[1], @C[9], 32-28
-	sll	@C[9], @C[9], 28
+	srlw	@T[0], @C[8], 32-28
+	sllw	@C[8], @C[8], 28
+	srlw	@T[1], @C[9], 32-28
+	sllw	@C[9], @C[9], 28
 	or	@C[8], @C[8], @T[0]
 	or	@C[9], @C[9], @T[1]
 
@@ -1305,34 +1304,34 @@ __KeccakF1600:
 	xor	@C[8], @C[8], @D[2]
 	xor	@C[9], @C[9], @D[3]
 
-	$SRL	@T[0], @C[0], 32-31
-	sll	@C[0], @C[0], 31
-	$SRL	@T[1], @C[1], 32-31
-	sll	@C[1], @C[1], 31
+	srlw	@T[0], @C[0], 32-31
+	sllw	@C[0], @C[0], 31
+	srlw	@T[1], @C[1], 32-31
+	sllw	@C[1], @C[1], 31
 	or	@C[0], @C[0], @T[0]
 	or	@C[1], @C[1], @T[1]
-	$SRL	@T[0], @C[2], 31-27
-	sll	@C[2], @C[2], 28
-	$SRL	@T[1], @C[3], 32-27
-	sll	@C[3], @C[3], 27
+	srlw	@T[0], @C[2], 31-27
+	sllw	@C[2], @C[2], 28
+	srlw	@T[1], @C[3], 32-27
+	sllw	@C[3], @C[3], 27
 	or	@C[2], @C[2], @T[0]
 	or	@C[3], @C[3], @T[1]
-	$SRL	@T[0], @C[4], 31-19
-	sll	@C[4], @C[4], 20
-	$SRL	@T[1], @C[5], 32-19
-	sll	@C[5], @C[5], 19
+	srlw	@T[0], @C[4], 31-19
+	sllw	@C[4], @C[4], 20
+	srlw	@T[1], @C[5], 32-19
+	sllw	@C[5], @C[5], 19
 	or	@C[4], @C[4], @T[0]
 	or	@C[5], @C[5], @T[1]
-	$SRL	@T[0], @C[6], 31-20
-	sll	@C[6], @C[6], 21
-	$SRL	@T[1], @C[7], 32-20
-	sll	@C[7], @C[7], 20
+	srlw	@T[0], @C[6], 31-20
+	sllw	@C[6], @C[6], 21
+	srlw	@T[1], @C[7], 32-20
+	sllw	@C[7], @C[7], 20
 	or	@C[6], @C[6], @T[0]
 	or	@C[7], @C[7], @T[1]
-	$SRL	@T[0], @C[8], 32-1
-	sll	@C[8], @C[8], 1
-	$SRL	@T[1], @C[9], 32-1
-	sll	@C[9], @C[9], 1
+	srlw	@T[0], @C[8], 32-1
+	sllw	@C[8], @C[8], 1
+	srlw	@T[1], @C[9], 32-1
+	sllw	@C[9], @C[9], 1
 	or	@C[8], @C[8], @T[0]
 	or	@C[9], @C[9], @T[1]
 
@@ -1371,27 +1370,27 @@ __KeccakF1600:
 	sw	@D[9], $A[4][4]+4($a0)
 	bnez	@T[0], .Loop
 
-	$POP	$ra, 224-$SIZE_T*1($sp)
+	POP	$ra, 224-__SIZEOF_SIZE_T__*1($sp)
 	addi	$sp, $sp, 224
 	ret
 .size	__KeccakF1600, .-__KeccakF1600
 
 .type	KeccakF1600, \@function
 KeccakF1600:
-	addi	$sp,  $sp, -$SIZE_T*16
-	$PUSH	$ra,  $SIZE_T*15($sp)
-	$PUSH	$s0,  $SIZE_T*14($sp)
-	$PUSH	$s1,  $SIZE_T*13($sp)
-	$PUSH	$s2,  $SIZE_T*12($sp)
-	$PUSH	$s3,  $SIZE_T*11($sp)
-	$PUSH	$s4,  $SIZE_T*10($sp)
-	$PUSH	$s5,  $SIZE_T*9($sp)
-	$PUSH	$s6,  $SIZE_T*8($sp)
-	$PUSH	$s7,  $SIZE_T*7($sp)
-	$PUSH	$s8,  $SIZE_T*6($sp)
-	$PUSH	$s9,  $SIZE_T*5($sp)
-	$PUSH	$s10, $SIZE_T*4($sp)
-	$PUSH	$s11, $SIZE_T*3($sp)
+	addi	$sp,  $sp, -__SIZEOF_SIZE_T__*16
+	PUSH	$ra,  __SIZEOF_SIZE_T__*15($sp)
+	PUSH	$s0,  __SIZEOF_SIZE_T__*14($sp)
+	PUSH	$s1,  __SIZEOF_SIZE_T__*13($sp)
+	PUSH	$s2,  __SIZEOF_SIZE_T__*12($sp)
+	PUSH	$s3,  __SIZEOF_SIZE_T__*11($sp)
+	PUSH	$s4,  __SIZEOF_SIZE_T__*10($sp)
+	PUSH	$s5,  __SIZEOF_SIZE_T__*9($sp)
+	PUSH	$s6,  __SIZEOF_SIZE_T__*8($sp)
+	PUSH	$s7,  __SIZEOF_SIZE_T__*7($sp)
+	PUSH	$s8,  __SIZEOF_SIZE_T__*6($sp)
+	PUSH	$s9,  __SIZEOF_SIZE_T__*5($sp)
+	PUSH	$s10, __SIZEOF_SIZE_T__*4($sp)
+	PUSH	$s11, __SIZEOF_SIZE_T__*3($sp)
 
 	lw	$s0, $A[0][1]+0($a0)
 	lw	$s1, $A[0][1]+4($a0)
@@ -1469,20 +1468,20 @@ KeccakF1600:
 	sw	$a6, $A[4][0]+0($a0)
 	sw	$a7, $A[4][0]+4($a0)
 
-	$POP	$ra,  $SIZE_T*15($sp)
-	$POP	$s0,  $SIZE_T*14($sp)
-	$POP	$s1,  $SIZE_T*13($sp)
-	$POP	$s2,  $SIZE_T*12($sp)
-	$POP	$s3,  $SIZE_T*11($sp)
-	$POP	$s4,  $SIZE_T*10($sp)
-	$POP	$s5,  $SIZE_T*9($sp)
-	$POP	$s6,  $SIZE_T*8($sp)
-	$POP	$s7,  $SIZE_T*7($sp)
-	$POP	$s8,  $SIZE_T*6($sp)
-	$POP	$s9,  $SIZE_T*5($sp)
-	$POP	$s10, $SIZE_T*4($sp)
-	$POP	$s11, $SIZE_T*3($sp)
-	addi	$sp,  $sp, $SIZE_T*16
+	POP	$ra,  __SIZEOF_SIZE_T__*15($sp)
+	POP	$s0,  __SIZEOF_SIZE_T__*14($sp)
+	POP	$s1,  __SIZEOF_SIZE_T__*13($sp)
+	POP	$s2,  __SIZEOF_SIZE_T__*12($sp)
+	POP	$s3,  __SIZEOF_SIZE_T__*11($sp)
+	POP	$s4,  __SIZEOF_SIZE_T__*10($sp)
+	POP	$s5,  __SIZEOF_SIZE_T__*9($sp)
+	POP	$s6,  __SIZEOF_SIZE_T__*8($sp)
+	POP	$s7,  __SIZEOF_SIZE_T__*7($sp)
+	POP	$s8,  __SIZEOF_SIZE_T__*6($sp)
+	POP	$s9,  __SIZEOF_SIZE_T__*5($sp)
+	POP	$s10, __SIZEOF_SIZE_T__*4($sp)
+	POP	$s11, __SIZEOF_SIZE_T__*3($sp)
+	addi	$sp,  $sp, __SIZEOF_SIZE_T__*16
 	ret
 .size	KeccakF1600, .-KeccakF1600
 ___
@@ -1492,21 +1491,21 @@ $code.=<<___;
 .globl	SHA3_absorb
 .type	SHA3_absorb, \@function
 SHA3_absorb:
-	addi	$sp,  $sp, -$SIZE_T*20
+	addi	$sp,  $sp, -__SIZEOF_SIZE_T__*20
 	bltu	$len, $bsz, .Labsorb_abort	# len < bsz?
-	$PUSH	$ra,  $SIZE_T*19($sp)
-	$PUSH	$s0,  $SIZE_T*18($sp)
-	$PUSH	$s1,  $SIZE_T*17($sp)
-	$PUSH	$s2,  $SIZE_T*16($sp)
-	$PUSH	$s3,  $SIZE_T*15($sp)
-	$PUSH	$s4,  $SIZE_T*14($sp)
-	$PUSH	$s5,  $SIZE_T*13($sp)
-	$PUSH	$s6,  $SIZE_T*12($sp)
-	$PUSH	$s7,  $SIZE_T*11($sp)
-	$PUSH	$s8,  $SIZE_T*10($sp)
-	$PUSH	$s9,  $SIZE_T*9($sp)
-	$PUSH	$s10, $SIZE_T*8($sp)
-	$PUSH	$s11, $SIZE_T*7($sp)
+	PUSH	$ra,  __SIZEOF_SIZE_T__*19($sp)
+	PUSH	$s0,  __SIZEOF_SIZE_T__*18($sp)
+	PUSH	$s1,  __SIZEOF_SIZE_T__*17($sp)
+	PUSH	$s2,  __SIZEOF_SIZE_T__*16($sp)
+	PUSH	$s3,  __SIZEOF_SIZE_T__*15($sp)
+	PUSH	$s4,  __SIZEOF_SIZE_T__*14($sp)
+	PUSH	$s5,  __SIZEOF_SIZE_T__*13($sp)
+	PUSH	$s6,  __SIZEOF_SIZE_T__*12($sp)
+	PUSH	$s7,  __SIZEOF_SIZE_T__*11($sp)
+	PUSH	$s8,  __SIZEOF_SIZE_T__*10($sp)
+	PUSH	$s9,  __SIZEOF_SIZE_T__*9($sp)
+	PUSH	$s10, __SIZEOF_SIZE_T__*8($sp)
+	PUSH	$s11, __SIZEOF_SIZE_T__*7($sp)
 
 	lw	$s0, $A[0][1]+0($a0)
 	lw	$s1, $A[0][1]+4($a0)
@@ -1545,13 +1544,13 @@ SHA3_absorb:
 	sw	$a6, $A[4][0]+0($a0)
 	sw	$a7, $A[4][0]+4($a0)
 
-	$PUSH	$bsz, $SIZE_T*2($sp)
+	PUSH	$bsz, __SIZEOF_SIZE_T__*2($sp)
 
 .Loop_absorb:
 	sub	$t1, $len, $bsz
 	add	$t2, $inp, $bsz		# next input block
-	$PUSH	$t1, $SIZE_T*1($sp)
-	$PUSH	$t2, $SIZE_T*0($sp)
+	PUSH	$t1, __SIZEOF_SIZE_T__*1($sp)
+	PUSH	$t2, __SIZEOF_SIZE_T__*0($sp)
 	mv	$A_flat, $a0
 	lui	$s0, 0x55555
 	lui	$s1, 0x33333
@@ -1561,12 +1560,12 @@ SHA3_absorb:
 	addi	$s1, $s1, 0x333		# 0x33333333
 	addi	$s2, $s2, -0xf1		# 0x0f0f0f0f
 	addi	$s3, $s3, 0x0ff		# 0x00ff00ff
-	sll	$s4, $s0, 1		# 0xaaaaaaaa
-	sll	$s5, $s1, 2		# 0xcccccccc
-	sll	$s6, $s2, 4		# 0xf0f0f0f0
-	sll	$s7, $s3, 8		# 0xff00ff00
+	sllw	$s4, $s0, 1		# 0xaaaaaaaa
+	sllw	$s5, $s1, 2		# 0xcccccccc
+	sllw	$s6, $s2, 4		# 0xf0f0f0f0
+	sllw	$s7, $s3, 8		# 0xff00ff00
 	lui	$s8, 0xffff0		# 0xffff0000
-	$SRL	$s9, $s8, 16		# 0x0000ffff
+	srlw	$s9, $s8, 16		# 0x0000ffff
 
 .Loop_block:
 	lbu	$a4, 0($inp)
@@ -1575,17 +1574,17 @@ SHA3_absorb:
 	lbu	$a7, 5($inp)
 	lbu	$ra, 2($inp)
 	lbu	$t0, 6($inp)
-	sll	$a6, $a6, 8
+	sllw	$a6, $a6, 8
 	lbu	$t1, 3($inp)
-	sll	$a7, $a7, 8
+	sllw	$a7, $a7, 8
 	lbu	$t2, 7($inp)
-	sll	$ra, $ra, 16
+	sllw	$ra, $ra, 16
 	or	$a4, $a4, $a6
-	sll	$t0, $t0, 16
+	sllw	$t0, $t0, 16
 	or	$a5, $a5, $a7
-	sll	$t1, $t1, 24
+	sllw	$t1, $t1, 24
 	or	$a4, $a4, $ra
-	sll	$t2, $t2, 24
+	sllw	$t2, $t2, 24
 	or	$a5, $a5, $t0
 	or	$a4, $a4, $t1
 	or	$a5, $a5, $t2
@@ -1596,56 +1595,56 @@ SHA3_absorb:
 
 	and	$t0, $a4, $s0		# t0 = lo & 0x55555555;
 	 and	$t1, $a5, $s0		# t1 = hi & 0x55555555;
-	$SRL	$ra, $t0, 1
-	 $SRL	$t2, $t1, 1
+	srlw	$ra, $t0, 1
+	 srlw	$t2, $t1, 1
 	or	$t0, $t0, $ra		# t0 |= t0 >> 1;
 	 or	$t1, $t1, $t2		# t1 |= t1 >> 1;
 	and	$t0, $t0, $s1		# t0 &= 0x33333333;
 	 and	$t1, $t1, $s1		# t1 &= 0x33333333;
-	$SRL	$ra, $t0, 2
-	 $SRL	$t2, $t1, 2
+	srlw	$ra, $t0, 2
+	 srlw	$t2, $t1, 2
 	or	$t0, $t0, $ra		# t0 |= t0 >> 2;
 	 or	$t1, $t1, $t2		# t1 |= t1 >> 2;
 	and	$t0, $t0, $s2		# t0 &= 0x0f0f0f0f;
 	 and	$t1, $t1, $s2		# t1 &= 0x0f0f0f0f;
-	$SRL	$ra, $t0, 4
-	 $SRL	$t2, $t1, 4
+	srlw	$ra, $t0, 4
+	 srlw	$t2, $t1, 4
 	or	$t0, $t0, $ra		# t0 |= t0 >> 4;
 	 or	$t1, $t1, $t2		# t1 |= t1 >> 4;
 	and	$t0, $t0, $s3		# t0 &= 0x00ff00ff;
 	 and	$t1, $t1, $s3		# t1 &= 0x00ff00ff;
-	$SRL	$ra, $t0, 8
-	 $SRL	$t2, $t1, 8
+	srlw	$ra, $t0, 8
+	 srlw	$t2, $t1, 8
 	or	$t0, $t0, $ra		# t0 |= t0 >> 8;
 	 or	$t1, $t1, $t2		# t1 |= t1 >> 8;
 	and	$t0, $t0, $s9		# t0 &= 0x0000ffff;
-	 sll	$t1, $t1, 16		# t1 <<= 16;
+	 sllw	$t1, $t1, 16		# t1 <<= 16;
 
 	and	$a4, $a4, $s4		# lo &= 0xaaaaaaaa;
 	 and	$a5, $a5, $s4		# hi &= 0xaaaaaaaa;
-	sll	$ra, $a4, 1
-	 sll	$t2, $a5, 1
+	sllw	$ra, $a4, 1
+	 sllw	$t2, $a5, 1
 	or	$a4, $a4, $ra		# lo |= lo << 1;
 	 or	$a5, $a5, $t2		# hi |= hi << 1;
 	and	$a4, $a4, $s5		# lo &= 0xcccccccc;
 	 and	$a5, $a5, $s5		# hi &= 0xcccccccc;
-	sll	$ra, $a4, 2
-	 sll	$t2, $a5, 2
+	sllw	$ra, $a4, 2
+	 sllw	$t2, $a5, 2
 	or	$a4, $a4, $ra		# lo |= lo << 2;
 	 or	$a5, $a5, $t2		# hi |= hi << 2;
 	and	$a4, $a4, $s6		# lo &= 0xf0f0f0f0;
 	 and	$a5, $a5, $s6		# hi &= 0xf0f0f0f0;
-	sll	$ra, $a4, 4
-	 sll	$t2, $a5, 4
+	sllw	$ra, $a4, 4
+	 sllw	$t2, $a5, 4
 	or	$a4, $a4, $ra		# lo |= lo << 4;
 	 or	$a5, $a5, $t2		# hi |= hi << 4;
 	and	$a4, $a4, $s7		# lo &= 0xff00ff00;
 	 and	$a5, $a5, $s7		# hi &= 0xff00ff00;
-	sll	$ra, $a4, 8
-	 sll	$t2, $a5, 8
+	sllw	$ra, $a4, 8
+	 sllw	$t2, $a5, 8
 	or	$a4, $a4, $ra		# lo |= lo << 8;
 	 or	$a5, $a5, $t2		# hi |= hi << 8;
-	$SRL	$a4, $a4, 16		# lo >>= 16;
+	srlw	$a4, $a4, 16		# lo >>= 16;
 	 and	$a5, $a5, $s8		# hi &= 0xffff0000;
 
 	xor	$s10, $s10, $t0		# absorb
@@ -1661,9 +1660,9 @@ SHA3_absorb:
 
 	jal	__KeccakF1600
 
-	$POP	$bsz, $SIZE_T*2($sp)
-	$POP	$len, $SIZE_T*1($sp)
-	$POP	$inp, $SIZE_T*0($sp)
+	POP	$bsz, __SIZEOF_SIZE_T__*2($sp)
+	POP	$len, __SIZEOF_SIZE_T__*1($sp)
+	POP	$inp, __SIZEOF_SIZE_T__*0($sp)
 
 	bgeu	$len, $bsz, .Loop_absorb
 
@@ -1704,22 +1703,22 @@ SHA3_absorb:
 	sw	$a6, $A[4][0]+0($a0)
 	sw	$a7, $A[4][0]+4($a0)
 
-	$POP	$ra,  $SIZE_T*19($sp)
-	$POP	$s0,  $SIZE_T*18($sp)
-	$POP	$s1,  $SIZE_T*17($sp)
-	$POP	$s2,  $SIZE_T*16($sp)
-	$POP	$s3,  $SIZE_T*15($sp)
-	$POP	$s4,  $SIZE_T*14($sp)
-	$POP	$s5,  $SIZE_T*13($sp)
-	$POP	$s6,  $SIZE_T*12($sp)
-	$POP	$s7,  $SIZE_T*11($sp)
-	$POP	$s8,  $SIZE_T*10($sp)
-	$POP	$s9,  $SIZE_T*9($sp)
-	$POP	$s10, $SIZE_T*8($sp)
-	$POP	$s11, $SIZE_T*7($sp)
+	POP	$ra,  __SIZEOF_SIZE_T__*19($sp)
+	POP	$s0,  __SIZEOF_SIZE_T__*18($sp)
+	POP	$s1,  __SIZEOF_SIZE_T__*17($sp)
+	POP	$s2,  __SIZEOF_SIZE_T__*16($sp)
+	POP	$s3,  __SIZEOF_SIZE_T__*15($sp)
+	POP	$s4,  __SIZEOF_SIZE_T__*14($sp)
+	POP	$s5,  __SIZEOF_SIZE_T__*13($sp)
+	POP	$s6,  __SIZEOF_SIZE_T__*12($sp)
+	POP	$s7,  __SIZEOF_SIZE_T__*11($sp)
+	POP	$s8,  __SIZEOF_SIZE_T__*10($sp)
+	POP	$s9,  __SIZEOF_SIZE_T__*9($sp)
+	POP	$s10, __SIZEOF_SIZE_T__*8($sp)
+	POP	$s11, __SIZEOF_SIZE_T__*7($sp)
 .Labsorb_abort:
 	mv	$a0, $len		# return value
-	addi	$sp, $sp, $SIZE_T*20
+	addi	$sp, $sp, __SIZEOF_SIZE_T__*20
 	ret
 .size	SHA3_absorb, .-SHA3_absorb
 ___
@@ -1731,22 +1730,22 @@ $code.=<<___;
 .align	5
 .type	SHA3_squeeze, \@function
 SHA3_squeeze:
-	addi	$sp,  $sp, -$SIZE_T*16
-	$PUSH	$ra,  $SIZE_T*15($sp)
-	$PUSH	$s0,  $SIZE_T*14($sp)
-	$PUSH	$s1,  $SIZE_T*13($sp)
-	$PUSH	$s2,  $SIZE_T*12($sp)
-	$PUSH	$s3,  $SIZE_T*11($sp)
-	$PUSH	$s4,  $SIZE_T*10($sp)
-	$PUSH	$s5,  $SIZE_T*9($sp)
-	$PUSH	$s6,  $SIZE_T*8($sp)
-	$PUSH	$s7,  $SIZE_T*7($sp)
-	$PUSH	$s8,  $SIZE_T*6($sp)
-	$PUSH	$s9,  $SIZE_T*5($sp)
-	$PUSH	$s10, $SIZE_T*4($sp)
-	$PUSH	$s11, $SIZE_T*3($sp)
+	addi	$sp,  $sp, -__SIZEOF_SIZE_T__*16
+	PUSH	$ra,  __SIZEOF_SIZE_T__*15($sp)
+	PUSH	$s0,  __SIZEOF_SIZE_T__*14($sp)
+	PUSH	$s1,  __SIZEOF_SIZE_T__*13($sp)
+	PUSH	$s2,  __SIZEOF_SIZE_T__*12($sp)
+	PUSH	$s3,  __SIZEOF_SIZE_T__*11($sp)
+	PUSH	$s4,  __SIZEOF_SIZE_T__*10($sp)
+	PUSH	$s5,  __SIZEOF_SIZE_T__*9($sp)
+	PUSH	$s6,  __SIZEOF_SIZE_T__*8($sp)
+	PUSH	$s7,  __SIZEOF_SIZE_T__*7($sp)
+	PUSH	$s8,  __SIZEOF_SIZE_T__*6($sp)
+	PUSH	$s9,  __SIZEOF_SIZE_T__*5($sp)
+	PUSH	$s10, __SIZEOF_SIZE_T__*4($sp)
+	PUSH	$s11, __SIZEOF_SIZE_T__*3($sp)
 
-	$PUSH	$bsz, $SIZE_T*2($sp)
+	PUSH	$bsz, __SIZEOF_SIZE_T__*2($sp)
 	mv	$A_flat, $a0
 
 	lui	$s4, 0x55555
@@ -1758,11 +1757,11 @@ SHA3_squeeze:
 	addi	$s6, $s6, -0xf1		# 0x0f0f0f0f
 	addi	$s7, $s7, 0x0ff		# 0x00ff00ff
 	lui	$s2, 0xffff0		# 0xffff0000
-	sll	$s8, $s4, 1		# 0xaaaaaaaa
-	sll	$s9, $s5, 2		# 0xcccccccc
-	sll	$s10, $s6, 4		# 0xf0f0f0f0
-	sll	$s11, $s7, 8		# 0xff00ff00
-	$SRL	$s3, $s2, 16		# 0x0000ffff
+	sllw	$s8, $s4, 1		# 0xaaaaaaaa
+	sllw	$s9, $s5, 2		# 0xcccccccc
+	sllw	$s10, $s6, 4		# 0xf0f0f0f0
+	sllw	$s11, $s7, 8		# 0xff00ff00
+	srlw	$s3, $s2, 16		# 0x0000ffff
 
 .Loop_squeeze:
 	lw	$a4, 0($A_flat)
@@ -1770,54 +1769,54 @@ SHA3_squeeze:
 	addi	$A_flat, $A_flat, 8
 
 	and	$t0, $a4, $s3		# t0 = lo & 0x0000ffff;
-	 sll	$t1, $a5, 16		# t1 = hi << 16;
-	sll	$ra, $t0, 8
-	 $SRL	$t2, $t1, 8
+	 sllw	$t1, $a5, 16		# t1 = hi << 16;
+	sllw	$ra, $t0, 8
+	 srlw	$t2, $t1, 8
 	or	$t0, $t0, $ra		# t0 |= t0 << 8;
 	 or	$t1, $t1, $t2		# t1 |= t1 >> 1;
 	and	$t0, $t0, $s7		# t0 &= 0x00ff00ff;
 	 and	$t1, $t1, $s11		# t1 &= 0xff00ff00;
-	sll	$ra, $t0, 4
-	 $SRL	$t2, $t1, 4
+	sllw	$ra, $t0, 4
+	 srlw	$t2, $t1, 4
 	or	$t0, $t0, $ra		# t0 |= t0 << 4;
 	 or	$t1, $t1, $t2		# t1 |= t1 >> 2;
 	and	$t0, $t0, $s6		# t0 &= 0x0f0f0f0f;
 	 and	$t1, $t1, $s10		# t1 &= 0xf0f0f0f0;
-	sll	$ra, $t0, 2
-	 $SRL	$t2, $t1, 2
+	sllw	$ra, $t0, 2
+	 srlw	$t2, $t1, 2
 	or	$t0, $t0, $ra		# t0 |= t0 << 2;
 	 or	$t1, $t1, $t2		# t1 |= t1 >> 4;
 	and	$t0, $t0, $s5		# t0 &= 0x33333333;
 	 and	$t1, $t1, $s9		# t1 &= 0xcccccccc;
-	sll	$ra, $t0, 1
-	 $SRL	$t2, $t1, 1
+	sllw	$ra, $t0, 1
+	 srlw	$t2, $t1, 1
 	or	$t0, $t0, $ra		# t0 |= t0 >> 8;
 	 or	$t1, $t1, $t2		# t1 |= t1 >> 8;
 	and	$t0, $t0, $s4		# t0 &= 0x55555555;
 	 and	$t1, $t1, $s8		# t1 &= 0xaaaaaaaa;
 
-	$SRL	$a4, $a4, 16		# lo >>= 16;
+	srlw	$a4, $a4, 16		# lo >>= 16;
 	 and	$a5, $a5, $s2		# hi &= 0xffff0000;
-	sll	$ra, $a4, 8
-	 $SRL	$t2, $a5, 8
+	sllw	$ra, $a4, 8
+	 srlw	$t2, $a5, 8
 	or	$a4, $a4, $ra		# lo |= lo << 8;
 	 or	$a5, $a5, $t2		# hi |= hi >> 8;
 	and	$a4, $a4, $s7		# lo &= 0x00ff00ff;
 	 and	$a5, $a5, $s11		# hi &= 0xff00ff00;
-	sll	$ra, $a4, 4
-	 $SRL	$t2, $a5, 4
+	sllw	$ra, $a4, 4
+	 srlw	$t2, $a5, 4
 	or	$a4, $a4, $ra		# lo |= lo << 4;
 	 or	$a5, $a5, $t2		# hi |= hi >> 4;
 	and	$a4, $a4, $s6		# lo &= 0x0f0f0f0f;
 	 and	$a5, $a5, $s10		# hi &= 0xf0f0f0f0;
-	sll	$ra, $a4, 2
-	 $SRL	$t2, $a5, 2
+	sllw	$ra, $a4, 2
+	 srlw	$t2, $a5, 2
 	or	$a4, $a4, $ra		# lo |= lo << 2;
 	 or	$a5, $a5, $t2		# hi |= hi >> 2;
 	and	$a4, $a4, $s5		# lo &= 0x33333333;
 	 and	$a5, $a5, $s9		# hi &= 0xcccccccc;
-	sll	$ra, $a4, 1
-	 $SRL	$t2, $a5, 1
+	sllw	$ra, $a4, 1
+	 srlw	$t2, $a5, 1
 	or	$a4, $a4, $ra		# lo |= lo << 1;
 	 or	$a5, $a5, $t2		# hi |= hi >> 1;
 	and	$a4, $a4, $s4		# lo &= 0x55555555;
@@ -1828,11 +1827,11 @@ SHA3_squeeze:
 	or	$a4, $t0, $t1
 	bnez	$ra, .Lsqueeze_tail
 
-	$SRL	$a6, $a4, 8
+	srlw	$a6, $a4, 8
 	sb	$a4, 0($out)
-	$SRL	$a7, $a4, 16
+	srlw	$a7, $a4, 16
 	sb	$a6, 1($out)
-	$SRL	$t0, $a4, 24
+	srlw	$t0, $a4, 24
 	sb	$a7, 2($out)
 	addi	$len, $len, -4
 	sb	$t0, 3($out)
@@ -1841,11 +1840,11 @@ SHA3_squeeze:
 	mv	$a4, $a5
 	bnez	$ra, .Lsqueeze_tail
 
-	$SRL	$a6, $a4, 8
+	srlw	$a6, $a4, 8
 	sb	$a4, 0($out)
-	$SRL	$a7, $a4, 16
+	srlw	$a7, $a4, 16
 	sb	$a6, 1($out)
-	$SRL	$t0, $a4, 24
+	srlw	$t0, $a4, 24
 	sb	$a7, 2($out)
 	addi	$len, $len, -4
 	sb	$t0, 3($out)
@@ -1855,14 +1854,14 @@ SHA3_squeeze:
 	addi	$bsz, $bsz, -8
 	bnez	$bsz, .Loop_squeeze
 
-	$PUSH	$len, $SIZE_T*1($sp)
-	$PUSH	$out, $SIZE_T*0($sp)
+	PUSH	$len, __SIZEOF_SIZE_T__*1($sp)
+	PUSH	$out, __SIZEOF_SIZE_T__*0($sp)
 
 	jal	KeccakF1600
 
-	$POP	$out, $SIZE_T*0($sp)
-	$POP	$len, $SIZE_T*1($sp)
-	$POP	$bsz, $SIZE_T*2($sp)
+	POP	$out, __SIZEOF_SIZE_T__*0($sp)
+	POP	$len, __SIZEOF_SIZE_T__*1($sp)
+	POP	$bsz, __SIZEOF_SIZE_T__*2($sp)
 	mv	$A_flat, $a0
 	j	.Loop_squeeze
 
@@ -1871,24 +1870,24 @@ SHA3_squeeze:
 	addi	$len, $len, -1
 	sb	$a4, 0($out)
 	addi	$out, $out, 1
-	$SRL	$a4, $a4, 8
+	srlw	$a4, $a4, 8
 	j	.Lsqueeze_tail
 
 .Lsqueeze_done:
-	$POP	$ra,  $SIZE_T*15($sp)
-	$POP	$s0,  $SIZE_T*14($sp)
-	$POP	$s1,  $SIZE_T*13($sp)
-	$POP	$s2,  $SIZE_T*12($sp)
-	$POP	$s3,  $SIZE_T*11($sp)
-	$POP	$s4,  $SIZE_T*10($sp)
-	$POP	$s5,  $SIZE_T*9($sp)
-	$POP	$s6,  $SIZE_T*8($sp)
-	$POP	$s7,  $SIZE_T*7($sp)
-	$POP	$s8,  $SIZE_T*6($sp)
-	$POP	$s9,  $SIZE_T*5($sp)
-	$POP	$s10, $SIZE_T*4($sp)
-	$POP	$s11, $SIZE_T*3($sp)
-	addi	$sp,  $sp, $SIZE_T*16
+	POP	$ra,  __SIZEOF_SIZE_T__*15($sp)
+	POP	$s0,  __SIZEOF_SIZE_T__*14($sp)
+	POP	$s1,  __SIZEOF_SIZE_T__*13($sp)
+	POP	$s2,  __SIZEOF_SIZE_T__*12($sp)
+	POP	$s3,  __SIZEOF_SIZE_T__*11($sp)
+	POP	$s4,  __SIZEOF_SIZE_T__*10($sp)
+	POP	$s5,  __SIZEOF_SIZE_T__*9($sp)
+	POP	$s6,  __SIZEOF_SIZE_T__*8($sp)
+	POP	$s7,  __SIZEOF_SIZE_T__*7($sp)
+	POP	$s8,  __SIZEOF_SIZE_T__*6($sp)
+	POP	$s9,  __SIZEOF_SIZE_T__*5($sp)
+	POP	$s10, __SIZEOF_SIZE_T__*4($sp)
+	POP	$s11, __SIZEOF_SIZE_T__*3($sp)
+	addi	$sp,  $sp, __SIZEOF_SIZE_T__*16
 	ret
 .size	SHA3_squeeze, .-SHA3_squeeze
 ___
