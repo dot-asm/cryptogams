@@ -77,7 +77,7 @@ my $nasmref=2.03;
 my $nasm=0;
 
 if    ($flavour eq "mingw64")	{ $gas=1; $elf=0; $win64=1;
-				  $prefix=`echo __USER_LABEL_PREFIX__ | $ENV{CC} -E -P -`;
+				  $prefix=`echo __USER_LABEL_PREFIX__ | \${CC:-false} -E -P -`;
 				  $prefix =~ s|\R$||; # Better chomp
 				}
 elsif ($flavour eq "macosx")	{ $gas=1; $elf=0; $prefix="_"; $decor="L\$"; }
@@ -393,21 +393,22 @@ my %globals;
 
 	if ($gas) {
 	    my $func = ($globals{$self->{value}} or $self->{value}) . ":";
-	    if ($win64	&& $current_function->{name} eq $self->{value}
-			&& $current_function->{abi} eq "svr4") {
-		$func .= "\n";
-		$func .= "	movq	%rdi,8(%rsp)\n";
-		$func .= "	movq	%rsi,16(%rsp)\n";
-		$func .= "	movq	%rsp,%rax\n";
-		$func .= "${decor}SEH_begin_$current_function->{name}:\n";
-		my $narg = $current_function->{narg};
-		$narg=6 if (!defined($narg));
-		$func .= "	movq	%rcx,%rdi\n" if ($narg>0);
-		$func .= "	movq	%rdx,%rsi\n" if ($narg>1);
-		$func .= "	movq	%r8,%rdx\n"  if ($narg>2);
-		$func .= "	movq	%r9,%rcx\n"  if ($narg>3);
-		$func .= "	movq	40(%rsp),%r8\n" if ($narg>4);
-		$func .= "	movq	48(%rsp),%r9\n" if ($narg>5);
+	    if ($current_function->{name} eq $self->{value}) {
+		$func .= "\n	.byte	0xf3,0x0f,0x1e,0xfa\n";	# endbranch
+		if ($win64 && $current_function->{abi} eq "svr4") {
+		    $func .= "	movq	%rdi,8(%rsp)\n";
+		    $func .= "	movq	%rsi,16(%rsp)\n";
+		    $func .= "	movq	%rsp,%rax\n";
+		    $func .= "${decor}SEH_begin_$current_function->{name}:\n";
+		    my $narg = $current_function->{narg};
+		    $narg=6 if (!defined($narg));
+		    $func .= "	movq	%rcx,%rdi\n" if ($narg>0);
+		    $func .= "	movq	%rdx,%rsi\n" if ($narg>1);
+		    $func .= "	movq	%r8,%rdx\n"  if ($narg>2);
+		    $func .= "	movq	%r9,%rcx\n"  if ($narg>3);
+		    $func .= "	movq	40(%rsp),%r8\n" if ($narg>4);
+		    $func .= "	movq	48(%rsp),%r9\n" if ($narg>5);
+		}
 	    }
 	    $func;
 	} elsif ($self->{value} ne "$current_function->{name}") {
@@ -418,6 +419,7 @@ my %globals;
 	    my $func =	"$current_function->{name}" .
 			($nasm ? ":" : "\tPROC $current_function->{scope}") .
 			"\n";
+	    $func .= "	DB	243,15,30,250\n";	# endbranch
 	    $func .= "	mov	QWORD$PTR\[8+rsp\],rdi\t;WIN64 prologue\n";
 	    $func .= "	mov	QWORD$PTR\[16+rsp\],rsi\n";
 	    $func .= "	mov	rax,rsp\n";
@@ -435,7 +437,8 @@ my %globals;
 	    $func .= "\n";
 	} else {
 	   "$current_function->{name}".
-			($nasm ? ":" : "\tPROC $current_function->{scope}");
+			($nasm ? ":" : "\tPROC $current_function->{scope}").
+	   "\n	DB	243,15,30,250";			# endbranch
 	}
     }
 }
@@ -1124,7 +1127,7 @@ my $vprotq = sub {
 # Intel Control-flow Enforcement Technology extension. All functions and
 # indirect branch targets will have to start with this instruction...
 
-my $endbranch = sub {
+my $endbr64 = sub {
     (0xf3,0x0f,0x1e,0xfa);
 };
 
@@ -1210,8 +1213,21 @@ while(defined(my $line=<>)) {
     print $line,"\n";
 }
 
-print "\n$current_segment\tENDS\n"	if ($current_segment && $masm);
-print "END\n"				if ($masm);
+# platform-specific epilogue
+if ($masm) {
+    print "\n$current_segment\tENDS\n"	if ($current_segment);
+    print "END\n";
+} elsif ($elf) {
+    # -fcf-protection segment, snatched from compiler -S output
+    print <<___;
+
+.section	.note.gnu.property,"a",\@note
+.align	8
+.long	4,16,5
+.byte	0x47,0x4E,0x55,0
+.long	0xc0000002,4,3,0
+___
+}
 
 close STDOUT;
 
