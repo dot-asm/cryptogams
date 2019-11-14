@@ -30,6 +30,7 @@
 # Sandy Bridge		12.9(**)
 # Haswell		9.6
 # Skylake		9.4
+# Ice Lake		8.6
 # Silvermont		22.8
 # Goldmont		15.8
 # VIA Nano		17.3

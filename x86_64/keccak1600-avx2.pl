@@ -107,6 +107,7 @@ my @A_jagged = ([0,0], [1,0], [1,1], [1,2], [1,3],	# [0][0..4]
 #
 # Haswell		8.7/+10%
 # Skylake		7.8/+20%
+# Ice Lake		7.8/+10%
 # Ryzen			17(**)
 #
 # (*)	Corresponds to SHA3-256. Percentage after slash is improvement

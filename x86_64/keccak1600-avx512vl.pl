@@ -21,6 +21,7 @@
 #			r=1088(*)
 #
 # Skylake-X		6.4/+47%
+# Ice Lake		6.4/+34%
 #
 # (*)	Corresponds to SHA3-256. Percentage after slash is improvement
 #	coefficient in comparison to scalar keccak1600-x86_64.pl.

@@ -25,6 +25,7 @@
 #
 # Knights Landing	7.6
 # Skylake-X		5.7
+# Ice Lake		5.7
 #
 # (*)	Corresponds to SHA3-256.
 
