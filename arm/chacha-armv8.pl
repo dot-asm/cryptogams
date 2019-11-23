@@ -307,7 +307,7 @@ $code.=<<___;
 	rev	@x[12],@x[12]
 	rev	@x[14],@x[14]
 #endif
-	stp	@x[0],@x[2],[sp,#0]
+	stp	@x[0],@x[2],[sp,#0]		// off-load complete block
 	stp	@x[4],@x[6],[sp,#16]
 	stp	@x[8],@x[10],[sp,#32]
 	stp	@x[12],@x[14],[sp,#48]
@@ -320,7 +320,7 @@ $code.=<<___;
 	strb	w10,[$out,$len]
 	cbnz	$len,.Loop_tail
 
-	stp	xzr,xzr,[sp,#0]
+	stp	xzr,xzr,[sp,#0]			// wipe off-load area
 	stp	xzr,xzr,[sp,#16]
 	stp	xzr,xzr,[sp,#32]
 	stp	xzr,xzr,[sp,#48]
@@ -338,6 +338,14 @@ $code.=<<___;
 ___
 
 {{{
+########################################################################
+# 4x"vertical" layout reduces *total* amount of instructions by trading
+# 60 "horizontal" permutations in inner loop for 32-instruction diagonal
+# transposition at the loop exit. And since NEON instruction issue rate
+# is customarily limited, it's possible to process one additional block
+# with scalar instructions at no additional cost. Hence the "4+1"
+# description...
+
 my @K = map("v$_.4s",(0..3));
 my ($xt0,$xt1,$xt2,$xt3, $CTR,$ROT24) = map("v$_.4s",(4..9));
 my @X = map("v$_.4s",(16,20,24,28, 17,21,25,29, 18,22,26,30, 19,23,27,31));
@@ -649,6 +657,9 @@ $code.=<<___;
 	b.hi	.Loop_outer_neon
 
 	ldp	d8,d9,[sp]			// meet ABI requirements
+	eor	@K[1],@K[1],@K[1]		// cleanse key and nonce
+	eor	@K[2],@K[2],@K[2]
+	eor	@K[3],@K[3],@K[3]
 
 	ldp	x19,x20,[x29,#16]
 	add	sp,sp,#64
@@ -665,7 +676,7 @@ $code.=<<___;
 	add	$len,$len,#320
 	ldp	d8,d9,[sp]			// meet ABI requirements
 	cmp	$len,#64
-	b.lo	.Less_than_64
+	b.lo	.Less_than_64_neon
 
 	add	@x[0],@x[0],@x[1],lsl#32	// pack
 	add	@x[2],@x[2],@x[3],lsl#32
@@ -760,7 +771,7 @@ $code.=<<___;
 	sub	$len,$len,#64
 
 .Last_neon:
-	st1.8	{$xa0-$xd0},[sp]
+	st1.8	{$xa0-$xd0},[sp]		// off-load complete block
 
 	sub	$out,$out,#1
 	add	$inp,$inp,$len
@@ -776,12 +787,14 @@ $code.=<<___;
 	strb	w10,[$out,$len]
 	cbnz	$len,.Loop_tail_neon
 
-	stp	xzr,xzr,[sp,#0]
-	stp	xzr,xzr,[sp,#16]
-	stp	xzr,xzr,[sp,#32]
-	stp	xzr,xzr,[sp,#48]
+	stp	@K[0],@K[0],[sp,#0]		// wipe off-load area
+	stp	@K[0],@K[0],[sp,#32]		// [with known constant]
 
 .Ldone_neon:
+	eor	@K[1],@K[1],@K[1]		// cleanse key and nonce
+	eor	@K[2],@K[2],@K[2]
+	eor	@K[3],@K[3],@K[3]
+
 	ldp	x19,x20,[x29,#16]
 	add	sp,sp,#64
 	ldp	x21,x22,[x29,#32]
@@ -791,9 +804,26 @@ $code.=<<___;
 	ldp	x29,x30,[sp],#96
 	.inst	0xd50323bf			// autiasp
 	ret
+
+.align	4
+.Less_than_64_neon:
+	eor	@K[1],@K[1],@K[1]		// cleanse key and nonce
+	eor	@K[2],@K[2],@K[2]
+	eor	@K[3],@K[3],@K[3]
+	b	.Less_than_64
 .size	ChaCha20_neon,.-ChaCha20_neon
 ___
 {
+########################################################################
+# While "vertical" layout minimizes total amount of instructions, number
+# of blocks processed in parallel is limited to 4x. And trouble is that
+# if NEON instructions are high-latency enough, algorithmic dependencies
+# will manifest themselves as idle/wasted cycles. 6x"horizontal" avoids
+# these gaps and achieves better performance. Since NEON instruction
+# sequence is >2x longer, it's possible to slip in two additional blocks
+# processed with scalar code path at no additional cost. Hence the "6+2"
+# description...
+
 my @K = map("v$_.4s",(0..6));
 my ($T0,$T1,$T2,$T3,$T4,$T5)=@K;
 my ($A0,$B0,$C0,$D0,$A1,$B1,$C1,$D1,$A2,$B2,$C2,$D2,
@@ -1227,12 +1257,13 @@ $code.=<<___;
 	ldp	d12,d13,[sp,#128+32]
 	ldp	d14,d15,[sp,#128+48]
 
-	stp	@K[0],@K[0],[sp,#0]		// wipe off-load area
-	stp	@K[0],@K[0],[sp,#32]
-	stp	@K[0],@K[0],[sp,#64]
+	stp	@K[0],@K[0],[sp,#16]		// wipe key off-load area
+	stp	@K[0],@K[0],[sp,#48]		// [with known constant]
+	stp	@K[0],@K[0],[sp,#80]
 
 	b.eq	.Ldone_512_neon
 
+	// we have <512 bytes tail, harmonize state with other contexts
 	sub	$key,$key,#16			// .Lone
 	cmp	$len,#192
 	add	sp,sp,#128
@@ -1241,7 +1272,7 @@ $code.=<<___;
 	b.hs	.Loop_outer_neon
 
 	ldp	d8,d9,[sp,#0]			// meet ABI requirements
-	eor	@K[1],@K[1],@K[1]
+	eor	@K[1],@K[1],@K[1]		// cleanse key and nonce
 	eor	@K[2],@K[2],@K[2]
 	eor	@K[3],@K[3],@K[3]
 	eor	@K[4],@K[4],@K[4]
@@ -1251,6 +1282,13 @@ $code.=<<___;
 
 .Ldone_512_neon:
 	ldp	d8,d9,[sp,#128+0]		// meet ABI requirements
+	eor	@K[1],@K[1],@K[1]		// cleanse key and nonce
+	eor	@K[2],@K[2],@K[2]
+	eor	@K[3],@K[3],@K[3]
+	eor	@K[4],@K[4],@K[4]
+	eor	@K[5],@K[5],@K[5]
+	eor	@K[6],@K[6],@K[6]
+
 	ldp	x19,x20,[x29,#16]
 	add	sp,sp,#128+64
 	ldp	x21,x22,[x29,#32]
