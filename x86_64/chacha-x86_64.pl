@@ -3894,7 +3894,7 @@ simd_handler:
 	cmp	%r10,%rbx		# context->Rip<prologue label
 	jb	.Lcommon_seh_tail
 
-	mov	192($context),%rax	# pull context->R9
+	mov	200($context),%rax	# pull context->R10
 
 	mov	4(%r11),%r10d		# HandlerData[1]
 	mov	8(%r11),%ecx		# HandlerData[2]
