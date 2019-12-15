@@ -26,33 +26,36 @@
 # Cannonlake, has AVX512IFMA code path to execute...
 #
 # Numbers are cycles per processed byte with poly1305_blocks alone,
-# measured with rdtsc at fixed clock frequency.
+# most are measured with rdtsc at fixed clock frequency.
 #
-#		IALU/gcc-4.8(*)	AVX(**)		AVX2	AVX-512
+#		IALU/gcc-4.8(i)	AVX(ii)		AVX2	AVX-512
 # P4		4.46/+120%	-
 # Core 2	2.41/+90%	-
 # Westmere	1.88/+120%	-
 # Sandy Bridge	1.39/+140%	1.10
 # Haswell	1.14/+175%	1.11		0.65
 # Skylake[-X]	1.13/+120%	0.96		0.51	[0.35]
+# Cannon Lake	1.13/+120%	0.93		0.38(iv)0.24(iv)
 # Silvermont	2.83/+95%	-
-# Knights L	3.60/?		1.65		1.10	0.41(***)
+# Knights L	3.60/?		1.65		1.10	0.41(iii)
 # Goldmont	1.70/+180%	-
 # VIA Nano	1.82/+150%	-
 # Sledgehammer	1.38/+160%	-
 # Bulldozer	2.30/+130%	0.97
 # Ryzen		1.15/+200%	1.08		1.18
 #
-# (*)	improvement coefficients relative to clang are more modest and
+# (i)	improvement coefficients relative to clang are more modest and
 #	are ~50% on most processors, in both cases we are comparing to
 #	__int128 code;
-# (**)	SSE2 implementation was attempted, but among non-AVX processors
+# (ii)	SSE2 implementation was attempted, but among non-AVX processors
 #	it was faster than integer-only code only on older Intel P4 and
 #	Core processors, 50-30%, less newer processor is, but slower on
 #	contemporary ones, for example almost 2x slower on Atom, and as
 #	former are naturally disappearing, SSE2 is deemed unnecessary;
-# (***)	strangely enough performance seems to vary from core to core,
+# (iii)	strangely enough performance seems to vary from core to core,
 #	listed result is best case;
+# (iv)	these are IFMA results, which in addition means that first IALU
+#	column does not reflect short-input performance;
 
 $flavour = shift;
 $output  = shift;
@@ -2745,6 +2748,7 @@ $code.=<<___;
 .align	32
 poly1305_blocks_base2_44:
 .cfi_startproc
+.Lblocks_base2_44:
 	push	%rbx
 .cfi_push	%rbx
 	push	%rbp
@@ -2867,40 +2871,46 @@ ___
 my ($H0,$H1,$H2,$r2r1r0,$r1r0s2,$r0s2s1,$Dlo,$Dhi) = map("%ymm$_",(0..5,16,17));
 my ($T0,$inp_permd,$inp_shift,$PAD) = map("%ymm$_",(18..21));
 my ($reduc_mask,$reduc_rght,$reduc_left) = map("%ymm$_",(22..25));
+my ($T1,$T2,$T3) = map("%ymm$_",(26..28));
 
 $code.=<<___;
 .type	poly1305_blocks_vpmadd52,\@function,4
 .align	32
 poly1305_blocks_vpmadd52:
-	shr	\$4,$len
+	and	\$-16,$len
 	jz	.Lno_data_vpmadd52		# too short
 
-	shl	\$40,$padbit
 	mov	64($ctx),%r8			# peek on power of the key
 
 	# if powers of the key are not calculated yet, process up to 3
-	# blocks with this single-block subroutine, otherwise ensure that
-	# length is divisible by 2 blocks and pass the rest down to next
-	# subroutine...
+	# blocks with scalar single-block subroutine above, otherwise
+	# ensure that input length is divisible by 2 blocks and pass
+	# the rest down to next subroutine...
 
-	mov	\$3,%rax
-	mov	\$1,%r10
-	cmp	\$4,$len			# is input long
-	cmovae	%r10,%rax
+	mov	\$0x30,%r9
+	mov	\$0x10,%r10
+	cmp	\$0x40,$len			# is input long
+	cmovae	%r10,%r9
 	test	%r8,%r8				# is power value impossible?
-	cmovns	%r10,%rax
+	cmovns	%r10,%r9
 
-	and	$len,%rax			# is input of favourable length?
+	and	$len,%r9			# is input of favourable length?
 	jz	.Lblocks_vpmadd52_4x
 
-	sub		%rax,$len
+	sub	%r9,$len
+	cmovz	%r9,$len
+	jz	.Lblocks_base2_44
+
+	#########################################
 	mov		\$7,%r10d
 	mov		\$1,%r11d
+	shl		\$40,$padbit
 	kmovw		%r10d,%k7
 	lea		.L2_44_inp_permd(%rip),%r10
 	kmovw		%r11d,%k1
 
 	vmovq		$padbit,%x#$PAD
+	shr		\$40,$padbit		# restore original value
 	vmovdqa64	0(%r10),$inp_permd	# .L2_44_inp_permd
 	vmovdqa64	32(%r10),$inp_shift	# .L2_44_inp_shift
 	vpermq		\$0xcf,$PAD,$PAD
@@ -2914,10 +2924,6 @@ poly1305_blocks_vpmadd52:
 	vmovdqa64	96(%r10),$reduc_rght	# .L2_44_shift_rgt
 	vmovdqa64	128(%r10),$reduc_left	# .L2_44_shift_lft
 
-	jmp		.Loop_vpmadd52
-
-.align	32
-.Loop_vpmadd52:
 	vmovdqu32	0($inp),%x#$T0		# load input as ----3210
 	lea		16($inp),$inp
 
@@ -2927,22 +2933,30 @@ poly1305_blocks_vpmadd52:
 	vporq		$PAD,$T0,$T0
 
 	vpaddq		$T0,$Dlo,$Dlo		# accumulate input
+	vpxord		$T2,$T2,$T2
+	vpxord		$T3,$T3,$T3
 
 	vpermq		\$0,$Dlo,${H0}{%k7}{z}	# smash hash value
 	vpermq		\$0b01010101,$Dlo,${H1}{%k7}{z}
 	vpermq		\$0b10101010,$Dlo,${H2}{%k7}{z}
 
+	vpxord		$T0,$T0,$T0
+	vpxord		$T1,$T1,$T1
+	vpmadd52luq	$r2r1r0,$H0,$T2
+	vpmadd52huq	$r2r1r0,$H0,$T3
+
 	vpxord		$Dlo,$Dlo,$Dlo
 	vpxord		$Dhi,$Dhi,$Dhi
-
-	vpmadd52luq	$r2r1r0,$H0,$Dlo
-	vpmadd52huq	$r2r1r0,$H0,$Dhi
-
-	vpmadd52luq	$r1r0s2,$H1,$Dlo
-	vpmadd52huq	$r1r0s2,$H1,$Dhi
+	vpmadd52luq	$r1r0s2,$H1,$T0
+	vpmadd52huq	$r1r0s2,$H1,$T1
 
 	vpmadd52luq	$r0s2s1,$H2,$Dlo
 	vpmadd52huq	$r0s2s1,$H2,$Dhi
+
+	vpaddq		$T0,$T2,$T2
+	vpaddq		$T1,$T3,$T3
+	vpaddq		$T2,$Dlo,$Dlo
+	vpaddq		$T3,$Dhi,$Dhi
 
 	vpsrlvq		$reduc_rght,$Dlo,$T0	# 0 in topmost qword
 	vpsllvq		$reduc_left,$Dhi,$Dhi	# 0 in topmost qword
@@ -2968,13 +2982,9 @@ poly1305_blocks_vpmadd52:
 
 	vpaddq		$T0,$Dlo,$Dlo
 
-	dec		%rax			# len-=16
-	jnz		.Loop_vpmadd52
-
 	vmovdqu64	$Dlo,0($ctx){%k7}	# store hash value
 
-	test		$len,$len
-	jnz		.Lblocks_vpmadd52_4x
+	jmp		.Lblocks_vpmadd52_4x
 
 .Lno_data_vpmadd52:
 	ret
@@ -2989,24 +2999,24 @@ ___
 
 my ($H0,$H1,$H2,$R0,$R1,$R2,$S1,$S2) = map("%ymm$_",(0..5,16,17));
 my ($D0lo,$D0hi,$D1lo,$D1hi,$D2lo,$D2hi) = map("%ymm$_",(18..23));
-my ($T0,$T1,$T2,$T3,$mask44,$mask42,$tmp,$PAD) = map("%ymm$_",(24..31));
+my ($T0,$T1,$T2,$T3,$T4,$tmp,$mask44,$PAD) = map("%ymm$_",(24..31));
 
 $code.=<<___;
 .type	poly1305_blocks_vpmadd52_4x,\@function,4
 .align	32
 poly1305_blocks_vpmadd52_4x:
-	shr	\$4,$len
+	and	\$-16,$len
 	jz	.Lno_data_vpmadd52_4x		# too short
 
-	shl	\$40,$padbit
 	mov	64($ctx),%r8			# peek on power of the key
 
 .Lblocks_vpmadd52_4x:
+	shl		\$40,$padbit
+	shr		\$4,$len
 	vpbroadcastq	$padbit,$PAD
 
 	vmovdqa64	.Lx_mask44(%rip),$mask44
 	mov		\$5,%eax
-	vmovdqa64	.Lx_mask42(%rip),$mask42
 	kmovw		%eax,%k1		# used in 2x path
 
 	test		%r8,%r8			# is power value impossible?
@@ -3072,31 +3082,43 @@ poly1305_blocks_vpmadd52_4x:
 
 .Lmul_init_vpmadd52:
 	vpxorq		$D0lo,$D0lo,$D0lo
-	vpmadd52luq	$H2,$S1,$D0lo
 	vpxorq		$D0hi,$D0hi,$D0hi
-	vpmadd52huq	$H2,$S1,$D0hi
 	vpxorq		$D1lo,$D1lo,$D1lo
-	vpmadd52luq	$H2,$S2,$D1lo
 	vpxorq		$D1hi,$D1hi,$D1hi
-	vpmadd52huq	$H2,$S2,$D1hi
 	vpxorq		$D2lo,$D2lo,$D2lo
-	vpmadd52luq	$H2,$R0,$D2lo
 	vpxorq		$D2hi,$D2hi,$D2hi
+	vpmadd52luq	$H2,$S1,$D0lo
+	vpxorq		$T0,$T0,$T0
+	vpxorq		$T1,$T1,$T1
+	vpmadd52huq	$H2,$S1,$D0hi
+	vpxorq		$T2,$T2,$T2
+	vpxorq		$T3,$T3,$T3
+	vpmadd52luq	$H2,$S2,$D1lo
+	vpxorq		$T4,$T4,$T4
+	vpxorq		$tmp,$tmp,$tmp
+	vpmadd52huq	$H2,$S2,$D1hi
+	vpmadd52luq	$H2,$R0,$D2lo
 	vpmadd52huq	$H2,$R0,$D2hi
 
-	vpmadd52luq	$H0,$R0,$D0lo
-	vpmadd52huq	$H0,$R0,$D0hi
-	vpmadd52luq	$H0,$R1,$D1lo
-	vpmadd52huq	$H0,$R1,$D1hi
-	vpmadd52luq	$H0,$R2,$D2lo
-	vpmadd52huq	$H0,$R2,$D2hi
+	vpmadd52luq	$H0,$R0,$T0
+	vpmadd52huq	$H0,$R0,$T1
+	vpmadd52luq	$H0,$R1,$T2
+	vpmadd52huq	$H0,$R1,$T3
+	vpmadd52luq	$H0,$R2,$T4
+	vpmadd52huq	$H0,$R2,$tmp
 
 	vpmadd52luq	$H1,$S2,$D0lo
 	vpmadd52huq	$H1,$S2,$D0hi
 	vpmadd52luq	$H1,$R0,$D1lo
 	vpmadd52huq	$H1,$R0,$D1hi
+	vpaddq		$T0,$D0lo,$D0lo
+	vpaddq		$T1,$D0hi,$D0hi
 	vpmadd52luq	$H1,$R1,$D2lo
+	vpaddq		$T2,$D1lo,$D1lo
+	vpaddq		$T3,$D1hi,$D1hi
 	vpmadd52huq	$H1,$R1,$D2hi
+	vpaddq		$T4,$D2lo,$D2lo
+	vpaddq		$tmp,$D2hi,$D2hi
 
 	################################################################
 	# partial reduction
@@ -3116,7 +3138,7 @@ poly1305_blocks_vpmadd52_4x:
 
 	vpsrlq		\$42,$D2lo,$tmp
 	vpsllq		\$10,$D2hi,$D2hi
-	vpandq		$mask42,$D2lo,$H2
+	vpandq		.Lx_mask42(%rip),$D2lo,$H2
 	vpaddq		$tmp,$D2hi,$D2hi
 
 	vpaddq		$D2hi,$H0,$H0
@@ -3231,36 +3253,49 @@ poly1305_blocks_vpmadd52_4x:
 	vpaddq		$T1,$H1,$H1
 
 	vpxorq		$D0lo,$D0lo,$D0lo
-	vpmadd52luq	$H2,$S1,$D0lo
 	vpxorq		$D0hi,$D0hi,$D0hi
-	vpmadd52huq	$H2,$S1,$D0hi
 	vpxorq		$D1lo,$D1lo,$D1lo
-	vpmadd52luq	$H2,$S2,$D1lo
 	vpxorq		$D1hi,$D1hi,$D1hi
-	vpmadd52huq	$H2,$S2,$D1hi
 	vpxorq		$D2lo,$D2lo,$D2lo
-	vpmadd52luq	$H2,$R0,$D2lo
 	vpxorq		$D2hi,$D2hi,$D2hi
+	vpmadd52luq	$H2,$S1,$D0lo
+	vpxorq		$T0,$T0,$T0
+	vpxorq		$T1,$T1,$T1
+	vpmadd52huq	$H2,$S1,$D0hi
+	vpxorq		$T2,$T2,$T2
+	vpxorq		$T3,$T3,$T3
+	vpmadd52luq	$H2,$S2,$D1lo
+	vpxorq		$T4,$T4,$T4
+	vpxorq		$tmp,$tmp,$tmp
+	vpmadd52huq	$H2,$S2,$D1hi
+	vpmadd52luq	$H2,$R0,$D2lo
 	vpmadd52huq	$H2,$R0,$D2hi
 
-	 vmovdqu64	16*0($inp),$T2		# load data
-	 vmovdqu64	16*2($inp),$T3
-	 lea		16*4($inp),$inp
-	vpmadd52luq	$H0,$R0,$D0lo
-	vpmadd52huq	$H0,$R0,$D0hi
-	vpmadd52luq	$H0,$R1,$D1lo
-	vpmadd52huq	$H0,$R1,$D1hi
-	vpmadd52luq	$H0,$R2,$D2lo
-	vpmadd52huq	$H0,$R2,$D2hi
+	vpmadd52luq	$H0,$R0,$T0
+	vpmadd52huq	$H0,$R0,$T1
+	vpmadd52luq	$H0,$R1,$T2
+	vpmadd52huq	$H0,$R1,$T3
+	vpmadd52luq	$H0,$R2,$T4
+	vpmadd52huq	$H0,$R2,$tmp
 
-	 vpunpcklqdq	$T3,$T2,$T1		# transpose data
-	 vpunpckhqdq	$T3,$T2,$T3
 	vpmadd52luq	$H1,$S2,$D0lo
 	vpmadd52huq	$H1,$S2,$D0hi
 	vpmadd52luq	$H1,$R0,$D1lo
 	vpmadd52huq	$H1,$R0,$D1hi
+	vpaddq		$T0,$D0lo,$D0lo
+	vpaddq		$T1,$D0hi,$D0hi
 	vpmadd52luq	$H1,$R1,$D2lo
+	vpaddq		$T2,$D1lo,$D1lo
+	vpaddq		$T3,$D1hi,$D1hi
 	vpmadd52huq	$H1,$R1,$D2hi
+	vpaddq		$T4,$D2lo,$D2lo
+	vpaddq		$tmp,$D2hi,$D2hi
+
+	 vmovdqu64	16*0($inp),$T2		# load data
+	 vmovdqu64	16*2($inp),$T3
+	 lea		16*4($inp),$inp
+	 vpunpcklqdq	$T3,$T2,$T1		# transpose data
+	 vpunpckhqdq	$T3,$T2,$T3
 
 	################################################################
 	# partial reduction (interleaved with data splat)
@@ -3285,7 +3320,7 @@ poly1305_blocks_vpmadd52_4x:
 
 	vpsrlq		\$42,$D2lo,$tmp
 	vpsllq		\$10,$D2hi,$D2hi
-	vpandq		$mask42,$D2lo,$H2
+	vpandq		.Lx_mask42(%rip),$D2lo,$H2
 	vpaddq		$tmp,$D2hi,$D2hi
 
 	  vpaddq	$T2,$H2,$H2		# accumulate input
@@ -3320,31 +3355,43 @@ poly1305_blocks_vpmadd52_4x:
 	vpaddq		$T1,$H1,$H1
 
 	vpxorq		$D0lo,$D0lo,$D0lo
-	vpmadd52luq	$H2,$S1,$D0lo
 	vpxorq		$D0hi,$D0hi,$D0hi
-	vpmadd52huq	$H2,$S1,$D0hi
 	vpxorq		$D1lo,$D1lo,$D1lo
-	vpmadd52luq	$H2,$S2,$D1lo
 	vpxorq		$D1hi,$D1hi,$D1hi
-	vpmadd52huq	$H2,$S2,$D1hi
 	vpxorq		$D2lo,$D2lo,$D2lo
-	vpmadd52luq	$H2,$R0,$D2lo
 	vpxorq		$D2hi,$D2hi,$D2hi
+	vpmadd52luq	$H2,$S1,$D0lo
+	vpxorq		$T0,$T0,$T0
+	vpxorq		$T1,$T1,$T1
+	vpmadd52huq	$H2,$S1,$D0hi
+	vpxorq		$T2,$T2,$T2
+	vpxorq		$T3,$T3,$T3
+	vpmadd52luq	$H2,$S2,$D1lo
+	vpxorq		$T4,$T4,$T4
+	vpxorq		$tmp,$tmp,$tmp
+	vpmadd52huq	$H2,$S2,$D1hi
+	vpmadd52luq	$H2,$R0,$D2lo
 	vpmadd52huq	$H2,$R0,$D2hi
 
-	vpmadd52luq	$H0,$R0,$D0lo
-	vpmadd52huq	$H0,$R0,$D0hi
-	vpmadd52luq	$H0,$R1,$D1lo
-	vpmadd52huq	$H0,$R1,$D1hi
-	vpmadd52luq	$H0,$R2,$D2lo
-	vpmadd52huq	$H0,$R2,$D2hi
+	vpmadd52luq	$H0,$R0,$T0
+	vpmadd52huq	$H0,$R0,$T1
+	vpmadd52luq	$H0,$R1,$T2
+	vpmadd52huq	$H0,$R1,$T3
+	vpmadd52luq	$H0,$R2,$T4
+	vpmadd52huq	$H0,$R2,$tmp
 
 	vpmadd52luq	$H1,$S2,$D0lo
 	vpmadd52huq	$H1,$S2,$D0hi
 	vpmadd52luq	$H1,$R0,$D1lo
 	vpmadd52huq	$H1,$R0,$D1hi
+	vpaddq		$T0,$D0lo,$D0lo
+	vpaddq		$T1,$D0hi,$D0hi
 	vpmadd52luq	$H1,$R1,$D2lo
+	vpaddq		$T2,$D1lo,$D1lo
+	vpaddq		$T3,$D1hi,$D1hi
 	vpmadd52huq	$H1,$R1,$D2hi
+	vpaddq		$T4,$D2lo,$D2lo
+	vpaddq		$tmp,$D2hi,$D2hi
 
 	################################################################
 	# horizontal addition
@@ -3395,7 +3442,7 @@ poly1305_blocks_vpmadd52_4x:
 
 	vpsrlq		\$42,$D2lo,$tmp
 	vpsllq		\$10,$D2hi,$D2hi
-	vpandq		$mask42,$D2lo,$H2
+	vpandq		.Lx_mask42(%rip),$D2lo,$H2
 	vpaddq		$tmp,$D2hi,$D2hi
 
 	vpaddq		$D2hi,$H0,$H0
