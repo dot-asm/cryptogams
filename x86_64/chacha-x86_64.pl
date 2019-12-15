@@ -250,16 +250,16 @@ ChaCha20_ctr32:
 ___
 					if ($flavour !~ /kernel/) {
 $code.=<<___;
-	mov	OPENSSL_ia32cap_P+4(%rip),%r10
+	mov	OPENSSL_ia32cap_P+4(%rip),%r9
 ___
 $code.=<<___	if ($avx>2);
-	bt	\$48,%r10		# check for AVX512F
+	bt	\$48,%r9		# check for AVX512F
 	jc	.LChaCha20_avx512
-	test	%r10,%r10		# check for AVX512VL
+	test	%r9,%r9			# check for AVX512VL
 	js	.LChaCha20_avx512vl
 ___
 $code.=<<___;
-	test	\$`1<<(41-32)`,%r10d
+	test	\$`1<<(41-32)`,%r9d
 	jnz	.LChaCha20_ssse3
 ___
 					}
@@ -497,11 +497,11 @@ $code.=<<___;
 ChaCha20_ssse3:
 .cfi_startproc
 .LChaCha20_ssse3:
-	mov	%rsp,%r9		# frame pointer
-.cfi_def_cfa_register	%r9
+	mov	%rsp,%r10		# frame pointer
+.cfi_def_cfa_register	%r10
 ___
 $code.=<<___	if ($avx && $flavour !~ /kernel/);
-	test	\$`1<<(43-32)`,%r10d
+	test	\$`1<<(43-32)`,%r9d
 	jnz	.LChaCha20_4xop		# XOP is fastest even if we use 1/4
 ___
 $code.=<<___;
@@ -511,10 +511,11 @@ $code.=<<___;
 
 .Ldo_sse3_after_all:
 	sub	\$64+$xframe,%rsp
+	and	\$-16,%rsp
 ___
 $code.=<<___	if ($win64);
-	movaps	%xmm6,-0x28(%r9)
-	movaps	%xmm7,-0x18(%r9)
+	movaps	%xmm6,-0x28(%r10)
+	movaps	%xmm7,-0x18(%r10)
 .Lssse3_body:
 ___
 $code.=<<___;
@@ -610,11 +611,11 @@ $code.=<<___;
 .Ldone_ssse3:
 ___
 $code.=<<___	if ($win64);
-	movaps	-0x28(%r9),%xmm6
-	movaps	-0x18(%r9),%xmm7
+	movaps	-0x28(%r10),%xmm6
+	movaps	-0x18(%r10),%xmm7
 ___
 $code.=<<___;
-	lea	(%r9),%rsp
+	lea	(%r10),%rsp
 .cfi_def_cfa_register	%rsp
 .Lssse3_epilogue:
 	ret
@@ -679,17 +680,18 @@ $code.=<<___;
 ChaCha20_128:
 .cfi_startproc
 .LChaCha20_128:
-	mov	%rsp,%r9		# frame pointer
-.cfi_def_cfa_register	%r9
+	mov	%rsp,%r10		# frame pointer
+.cfi_def_cfa_register	%r10
 	sub	\$64+$xframe,%rsp
+	and	\$-16,%rsp
 ___
 $code.=<<___	if ($win64);
-	movaps	%xmm6,-0x68(%r9)
-	movaps	%xmm7,-0x58(%r9)
-	movaps	%xmm8,-0x48(%r9)
-	movaps	%xmm9,-0x38(%r9)
-	movaps	%xmm10,-0x28(%r9)
-	movaps	%xmm11,-0x18(%r9)
+	movaps	%xmm6,-0x68(%r10)
+	movaps	%xmm7,-0x58(%r10)
+	movaps	%xmm8,-0x48(%r10)
+	movaps	%xmm9,-0x38(%r10)
+	movaps	%xmm10,-0x28(%r10)
+	movaps	%xmm11,-0x18(%r10)
 .L128_body:
 ___
 $code.=<<___;
@@ -772,15 +774,15 @@ $code.=<<___;
 	movdqu	$d1,0x70($out)
 ___
 $code.=<<___	if ($win64);
-	movaps	-0x68(%r9),%xmm6
-	movaps	-0x58(%r9),%xmm7
-	movaps	-0x48(%r9),%xmm8
-	movaps	-0x38(%r9),%xmm9
-	movaps	-0x28(%r9),%xmm10
-	movaps	-0x18(%r9),%xmm11
+	movaps	-0x68(%r10),%xmm6
+	movaps	-0x58(%r10),%xmm7
+	movaps	-0x48(%r10),%xmm8
+	movaps	-0x38(%r10),%xmm9
+	movaps	-0x28(%r10),%xmm10
+	movaps	-0x18(%r10),%xmm11
 ___
 $code.=<<___;
-	lea	(%r9),%rsp
+	lea	(%r10),%rsp
 .cfi_def_cfa_register	%rsp
 .L128_epilogue:
 	ret
@@ -868,7 +870,7 @@ my @x=map("\"$_\"",@xx);
 	 "&pslld	(@x[$b1],7)",
 	"&por		(@x[$b0],$t1)",
 	 "&psrld	($t0,25)",
-	"&movdqa	($t1,'(%r10)')",	# .Lrot16(%rip)
+	"&movdqa	($t1,'(%r9)')",		# .Lrot16(%rip)
 	 "&por		(@x[$b1],$t0)",
 
 	"&movdqa	(\"`16*($c0-8)`(%rsp)\",$xc)",	# reload pair of 'c's
@@ -915,7 +917,7 @@ my @x=map("\"$_\"",@xx);
 	 "&pslld	(@x[$b3],7)",
 	"&por		(@x[$b2],$t1)",
 	 "&psrld	($t0,25)",
-	"&movdqa	($t1,'(%r10)')",	# .Lrot16(%rip)
+	"&movdqa	($t1,'(%r9)')",		# .Lrot16(%rip)
 	 "&por		(@x[$b3],$t0)"
 	);
 }
@@ -928,13 +930,13 @@ $code.=<<___;
 ChaCha20_4x:
 .cfi_startproc
 .LChaCha20_4x:
-	mov		%rsp,%r9		# frame pointer
-.cfi_def_cfa_register	%r9
-	mov		%r10,%r11
+	mov		%rsp,%r10		# frame pointer
+.cfi_def_cfa_register	%r10
+	mov		%r9,%r11
 ___
 $code.=<<___	if ($avx>1 && $flavour !~ /kernel/);
-	shr		\$32,%r10		# OPENSSL_ia32cap_P+8
-	test		\$`1<<5`,%r10		# test AVX2
+	shr		\$32,%r9		# OPENSSL_ia32cap_P+8
+	test		\$`1<<5`,%r9		# test AVX2
 	jnz		.LChaCha20_8x
 ___
 $code.=<<___;
@@ -947,6 +949,7 @@ $code.=<<___;
 
 .Lproceed4x:
 	sub		\$0x140+$xframe,%rsp
+	and		\$-16,%rsp
 ___
 	################ stack layout
 	# +0x00		SIMD equivalent of @x[8-12]
@@ -957,16 +960,16 @@ ___
 	# ...
 	# +0x140
 $code.=<<___	if ($win64);
-	movaps		%xmm6,-0xa8(%r9)
-	movaps		%xmm7,-0x98(%r9)
-	movaps		%xmm8,-0x88(%r9)
-	movaps		%xmm9,-0x78(%r9)
-	movaps		%xmm10,-0x68(%r9)
-	movaps		%xmm11,-0x58(%r9)
-	movaps		%xmm12,-0x48(%r9)
-	movaps		%xmm13,-0x38(%r9)
-	movaps		%xmm14,-0x28(%r9)
-	movaps		%xmm15,-0x18(%r9)
+	movaps		%xmm6,-0xa8(%r10)
+	movaps		%xmm7,-0x98(%r10)
+	movaps		%xmm8,-0x88(%r10)
+	movaps		%xmm9,-0x78(%r10)
+	movaps		%xmm10,-0x68(%r10)
+	movaps		%xmm11,-0x58(%r10)
+	movaps		%xmm12,-0x48(%r10)
+	movaps		%xmm13,-0x38(%r10)
+	movaps		%xmm14,-0x28(%r10)
+	movaps		%xmm15,-0x18(%r10)
 .L4x_body:
 ___
 $code.=<<___;
@@ -975,7 +978,7 @@ $code.=<<___;
 	movdqu		16($key),$xt3		# key[2]
 	movdqu		($counter),$xd3		# key[3]
 	lea		0x100(%rsp),%rcx	# size optimization
-	lea		.Lrot16(%rip),%r10
+	lea		.Lrot16(%rip),%r9
 	lea		.Lrot24(%rip),%r11
 
 	pshufd		\$0x00,$xa3,$xa0	# smash key by lanes...
@@ -1039,7 +1042,7 @@ $code.=<<___;
 .Loop_enter4x:
 	movdqa		$xt2,0x20(%rsp)		# SIMD equivalent of "@x[10]"
 	movdqa		$xt3,0x30(%rsp)		# SIMD equivalent of "@x[11]"
-	movdqa		(%r10),$xt3		# .Lrot16(%rip)
+	movdqa		(%r9),$xt3		# .Lrot16(%rip)
 	mov		\$10,%eax
 	movdqa		$xd0,0x100-0x100(%rcx)	# save SIMD counters
 	jmp		.Loop4x
@@ -1216,7 +1219,7 @@ $code.=<<___;
 	jae		.L64_or_more4x
 
 	#movdqa		0x00(%rsp),$xt0		# $xaN is offloaded, remember?
-	xor		%r10,%r10
+	xor		%r9,%r9
 	#movdqa		$xt0,0x00(%rsp)
 	movdqa		$xb0,0x10(%rsp)
 	movdqa		$xc0,0x20(%rsp)
@@ -1241,7 +1244,7 @@ $code.=<<___;
 
 	movdqa		0x10(%rsp),$xt0		# $xaN is offloaded, remember?
 	lea		0x40($inp),$inp		# inp+=64*1
-	xor		%r10,%r10
+	xor		%r9,%r9
 	movdqa		$xt0,0x00(%rsp)
 	movdqa		$xb1,0x10(%rsp)
 	lea		0x40($out),$out		# out+=64*1
@@ -1281,7 +1284,7 @@ $code.=<<___;
 
 	movdqa		0x20(%rsp),$xt0		# $xaN is offloaded, remember?
 	lea		0x80($inp),$inp		# inp+=64*2
-	xor		%r10,%r10
+	xor		%r9,%r9
 	movdqa		$xt0,0x00(%rsp)
 	movdqa		$xb2,0x10(%rsp)
 	lea		0x80($out),$out		# out+=64*2
@@ -1336,7 +1339,7 @@ $code.=<<___;
 
 	movdqa		0x30(%rsp),$xt0		# $xaN is offloaded, remember?
 	lea		0x40($inp),$inp		# inp+=64*3
-	xor		%r10,%r10
+	xor		%r9,%r9
 	movdqa		$xt0,0x00(%rsp)
 	movdqa		$xb3,0x10(%rsp)
 	lea		0x40($out),$out		# out+=64*3
@@ -1345,30 +1348,30 @@ $code.=<<___;
 	movdqa		$xd3,0x30(%rsp)
 
 .Loop_tail4x:
-	movzb		($inp,%r10),%eax
-	movzb		(%rsp,%r10),%ecx
-	lea		1(%r10),%r10
+	movzb		($inp,%r9),%eax
+	movzb		(%rsp,%r9),%ecx
+	lea		1(%r9),%r9
 	xor		%ecx,%eax
-	mov		%al,-1($out,%r10)
+	mov		%al,-1($out,%r9)
 	dec		$len
 	jnz		.Loop_tail4x
 
 .Ldone4x:
 ___
 $code.=<<___	if ($win64);
-	movaps		-0xa8(%r9),%xmm6
-	movaps		-0x98(%r9),%xmm7
-	movaps		-0x88(%r9),%xmm8
-	movaps		-0x78(%r9),%xmm9
-	movaps		-0x68(%r9),%xmm10
-	movaps		-0x58(%r9),%xmm11
-	movaps		-0x48(%r9),%xmm12
-	movaps		-0x38(%r9),%xmm13
-	movaps		-0x28(%r9),%xmm14
-	movaps		-0x18(%r9),%xmm15
+	movaps		-0xa8(%r10),%xmm6
+	movaps		-0x98(%r10),%xmm7
+	movaps		-0x88(%r10),%xmm8
+	movaps		-0x78(%r10),%xmm9
+	movaps		-0x68(%r10),%xmm10
+	movaps		-0x58(%r10),%xmm11
+	movaps		-0x48(%r10),%xmm12
+	movaps		-0x38(%r10),%xmm13
+	movaps		-0x28(%r10),%xmm14
+	movaps		-0x18(%r10),%xmm15
 ___
 $code.=<<___;
-	lea		(%r9),%rsp
+	lea		(%r10),%rsp
 .cfi_def_cfa_register	%rsp
 .L4x_epilogue:
 	ret
@@ -1464,9 +1467,10 @@ $code.=<<___;
 ChaCha20_4xop:
 .cfi_startproc
 .LChaCha20_4xop:
-	mov		%rsp,%r9		# frame pointer
-.cfi_def_cfa_register	%r9
+	mov		%rsp,%r10		# frame pointer
+.cfi_def_cfa_register	%r10
 	sub		\$0x140+$xframe,%rsp
+	and		\$-16,%rsp
 ___
 	################ stack layout
 	# +0x00		SIMD equivalent of @x[8-12]
@@ -1477,16 +1481,16 @@ ___
 	# ...
 	# +0x140
 $code.=<<___	if ($win64);
-	movaps		%xmm6,-0xa8(%r9)
-	movaps		%xmm7,-0x98(%r9)
-	movaps		%xmm8,-0x88(%r9)
-	movaps		%xmm9,-0x78(%r9)
-	movaps		%xmm10,-0x68(%r9)
-	movaps		%xmm11,-0x58(%r9)
-	movaps		%xmm12,-0x48(%r9)
-	movaps		%xmm13,-0x38(%r9)
-	movaps		%xmm14,-0x28(%r9)
-	movaps		%xmm15,-0x18(%r9)
+	movaps		%xmm6,-0xa8(%r10)
+	movaps		%xmm7,-0x98(%r10)
+	movaps		%xmm8,-0x88(%r10)
+	movaps		%xmm9,-0x78(%r10)
+	movaps		%xmm10,-0x68(%r10)
+	movaps		%xmm11,-0x58(%r10)
+	movaps		%xmm12,-0x48(%r10)
+	movaps		%xmm13,-0x38(%r10)
+	movaps		%xmm14,-0x28(%r10)
+	movaps		%xmm15,-0x18(%r10)
 .L4xop_body:
 ___
 $code.=<<___;
@@ -1702,7 +1706,7 @@ $code.=<<___;
 	cmp		\$64,$len
 	jae		.L64_or_more4xop
 
-	xor		%r10,%r10
+	xor		%r9,%r9
 	vmovdqa		$xa0,0x00(%rsp)
 	vmovdqa		$xb0,0x10(%rsp)
 	vmovdqa		$xc0,0x20(%rsp)
@@ -1723,7 +1727,7 @@ $code.=<<___;
 
 	lea		0x40($inp),$inp		# inp+=64*1
 	vmovdqa		$xa1,0x00(%rsp)
-	xor		%r10,%r10
+	xor		%r9,%r9
 	vmovdqa		$xb1,0x10(%rsp)
 	lea		0x40($out),$out		# out+=64*1
 	vmovdqa		$xc1,0x20(%rsp)
@@ -1754,7 +1758,7 @@ $code.=<<___;
 
 	lea		0x80($inp),$inp		# inp+=64*2
 	vmovdqa		$xa2,0x00(%rsp)
-	xor		%r10,%r10
+	xor		%r9,%r9
 	vmovdqa		$xb2,0x10(%rsp)
 	lea		0x80($out),$out		# out+=64*2
 	vmovdqa		$xc2,0x20(%rsp)
@@ -1795,7 +1799,7 @@ $code.=<<___;
 
 	lea		0x40($inp),$inp		# inp+=64*3
 	vmovdqa		$xa3,0x00(%rsp)
-	xor		%r10,%r10
+	xor		%r9,%r9
 	vmovdqa		$xb3,0x10(%rsp)
 	lea		0x40($out),$out		# out+=64*3
 	vmovdqa		$xc3,0x20(%rsp)
@@ -1803,11 +1807,11 @@ $code.=<<___;
 	vmovdqa		$xd3,0x30(%rsp)
 
 .Loop_tail4xop:
-	movzb		($inp,%r10),%eax
-	movzb		(%rsp,%r10),%ecx
-	lea		1(%r10),%r10
+	movzb		($inp,%r9),%eax
+	movzb		(%rsp,%r9),%ecx
+	lea		1(%r9),%r9
 	xor		%ecx,%eax
-	mov		%al,-1($out,%r10)
+	mov		%al,-1($out,%r9)
 	dec		$len
 	jnz		.Loop_tail4xop
 
@@ -1815,19 +1819,19 @@ $code.=<<___;
 	vzeroupper
 ___
 $code.=<<___	if ($win64);
-	movaps		-0xa8(%r9),%xmm6
-	movaps		-0x98(%r9),%xmm7
-	movaps		-0x88(%r9),%xmm8
-	movaps		-0x78(%r9),%xmm9
-	movaps		-0x68(%r9),%xmm10
-	movaps		-0x58(%r9),%xmm11
-	movaps		-0x48(%r9),%xmm12
-	movaps		-0x38(%r9),%xmm13
-	movaps		-0x28(%r9),%xmm14
-	movaps		-0x18(%r9),%xmm15
+	movaps		-0xa8(%r10),%xmm6
+	movaps		-0x98(%r10),%xmm7
+	movaps		-0x88(%r10),%xmm8
+	movaps		-0x78(%r10),%xmm9
+	movaps		-0x68(%r10),%xmm10
+	movaps		-0x58(%r10),%xmm11
+	movaps		-0x48(%r10),%xmm12
+	movaps		-0x38(%r10),%xmm13
+	movaps		-0x28(%r10),%xmm14
+	movaps		-0x18(%r10),%xmm15
 ___
 $code.=<<___;
-	lea		(%r9),%rsp
+	lea		(%r10),%rsp
 .cfi_def_cfa_register	%rsp
 .L4xop_epilogue:
 	ret
@@ -1906,7 +1910,7 @@ my @x=map("\"$_\"",@xx);
 	"&vpslld	($t1,@x[$b0],7)",
 	"&vpsrld	(@x[$b0],@x[$b0],25)",
 	"&vpor		(@x[$b0],$t1,@x[$b0])",
-	"&vbroadcasti128($t1,'(%r10)')",		# .Lrot16(%rip)
+	"&vbroadcasti128($t1,'(%r9)')",			# .Lrot16(%rip)
 	 "&vpaddd	($xc_,$xc_,@x[$d1])",
 	 "&vpxor	(@x[$b1],$xc_,@x[$b1])",
 	 "&vpslld	($t0,@x[$b1],7)",
@@ -1949,7 +1953,7 @@ my @x=map("\"$_\"",@xx);
 	"&vpslld	($t1,@x[$b2],7)",
 	"&vpsrld	(@x[$b2],@x[$b2],25)",
 	"&vpor		(@x[$b2],$t1,@x[$b2])",
-	"&vbroadcasti128($t1,'(%r10)')",		# .Lrot16(%rip)
+	"&vbroadcasti128($t1,'(%r9)')",			# .Lrot16(%rip)
 	 "&vpaddd	($xc_,$xc_,@x[$d3])",
 	 "&vpxor	(@x[$b3],$xc_,@x[$b3])",
 	 "&vpslld	($t0,@x[$b3],7)",
@@ -1969,22 +1973,22 @@ $code.=<<___;
 ChaCha20_avx2:
 .cfi_startproc
 .LChaCha20_8x:
-	mov		%rsp,%r9		# frame register
-.cfi_def_cfa_register	%r9
+	mov		%rsp,%r10		# frame register
+.cfi_def_cfa_register	%r10
 	sub		\$0x280+$xframe,%rsp
 	and		\$-32,%rsp
 ___
 $code.=<<___	if ($win64);
-	movaps		%xmm6,-0xa8(%r9)
-	movaps		%xmm7,-0x98(%r9)
-	movaps		%xmm8,-0x88(%r9)
-	movaps		%xmm9,-0x78(%r9)
-	movaps		%xmm10,-0x68(%r9)
-	movaps		%xmm11,-0x58(%r9)
-	movaps		%xmm12,-0x48(%r9)
-	movaps		%xmm13,-0x38(%r9)
-	movaps		%xmm14,-0x28(%r9)
-	movaps		%xmm15,-0x18(%r9)
+	movaps		%xmm6,-0xa8(%r10)
+	movaps		%xmm7,-0x98(%r10)
+	movaps		%xmm8,-0x88(%r10)
+	movaps		%xmm9,-0x78(%r10)
+	movaps		%xmm10,-0x68(%r10)
+	movaps		%xmm11,-0x58(%r10)
+	movaps		%xmm12,-0x48(%r10)
+	movaps		%xmm13,-0x38(%r10)
+	movaps		%xmm14,-0x28(%r10)
+	movaps		%xmm15,-0x18(%r10)
 .Lavx2_body:
 ___
 $code.=<<___;
@@ -2005,7 +2009,7 @@ $code.=<<___;
 	vbroadcasti128	($counter),$xd3		# key[3]
 	lea		0x100(%rsp),%rcx	# size optimization
 	lea		0x200(%rsp),%rax	# size optimization
-	lea		.Lrot16(%rip),%r10
+	lea		.Lrot16(%rip),%r9
 	lea		.Lrot24(%rip),%r11
 
 	vpshufd		\$0x00,$xa3,$xa0	# smash key by lanes...
@@ -2069,7 +2073,7 @@ $code.=<<___;
 .Loop_enter8x:
 	vmovdqa		$xt2,0x40(%rsp)		# SIMD equivalent of "@x[10]"
 	vmovdqa		$xt3,0x60(%rsp)		# SIMD equivalent of "@x[11]"
-	vbroadcasti128	(%r10),$xt3
+	vbroadcasti128	(%r9),$xt3
 	vmovdqa		$xd0,0x200-0x200(%rax)	# save SIMD counters
 	mov		\$10,%eax
 	jmp		.Loop8x
@@ -2250,7 +2254,7 @@ $code.=<<___;
 	cmp		\$64,$len
 	jae		.L64_or_more8x
 
-	xor		%r10,%r10
+	xor		%r9,%r9
 	vmovdqa		$xa0,0x00(%rsp)
 	vmovdqa		$xb0,0x20(%rsp)
 	jmp		.Loop_tail8x
@@ -2264,7 +2268,7 @@ $code.=<<___;
 	je		.Ldone8x
 
 	lea		0x40($inp),$inp		# inp+=64*1
-	xor		%r10,%r10
+	xor		%r9,%r9
 	vmovdqa		$xc0,0x00(%rsp)
 	lea		0x40($out),$out		# out+=64*1
 	sub		\$64,$len		# len-=64*1
@@ -2284,7 +2288,7 @@ $code.=<<___;
 	je		.Ldone8x
 
 	lea		0x80($inp),$inp		# inp+=64*2
-	xor		%r10,%r10
+	xor		%r9,%r9
 	vmovdqa		$xa1,0x00(%rsp)
 	lea		0x80($out),$out		# out+=64*2
 	sub		\$128,$len		# len-=64*2
@@ -2308,7 +2312,7 @@ $code.=<<___;
 	je		.Ldone8x
 
 	lea		0xc0($inp),$inp		# inp+=64*3
-	xor		%r10,%r10
+	xor		%r9,%r9
 	vmovdqa		$xc1,0x00(%rsp)
 	lea		0xc0($out),$out		# out+=64*3
 	sub		\$192,$len		# len-=64*3
@@ -2336,7 +2340,7 @@ $code.=<<___;
 	je		.Ldone8x
 
 	lea		0x100($inp),$inp	# inp+=64*4
-	xor		%r10,%r10
+	xor		%r9,%r9
 	vmovdqa		$xa2,0x00(%rsp)
 	lea		0x100($out),$out	# out+=64*4
 	sub		\$256,$len		# len-=64*4
@@ -2368,7 +2372,7 @@ $code.=<<___;
 	je		.Ldone8x
 
 	lea		0x140($inp),$inp	# inp+=64*5
-	xor		%r10,%r10
+	xor		%r9,%r9
 	vmovdqa		$xc2,0x00(%rsp)
 	lea		0x140($out),$out	# out+=64*5
 	sub		\$320,$len		# len-=64*5
@@ -2404,7 +2408,7 @@ $code.=<<___;
 	je		.Ldone8x
 
 	lea		0x180($inp),$inp	# inp+=64*6
-	xor		%r10,%r10
+	xor		%r9,%r9
 	vmovdqa		$xa3,0x00(%rsp)
 	lea		0x180($out),$out	# out+=64*6
 	sub		\$384,$len		# len-=64*6
@@ -2444,18 +2448,18 @@ $code.=<<___;
 	je		.Ldone8x
 
 	lea		0x1c0($inp),$inp	# inp+=64*7
-	xor		%r10,%r10
+	xor		%r9,%r9
 	vmovdqa		$xc3,0x00(%rsp)
 	lea		0x1c0($out),$out	# out+=64*7
 	sub		\$448,$len		# len-=64*7
 	vmovdqa		$xd3,0x20(%rsp)
 
 .Loop_tail8x:
-	movzb		($inp,%r10),%eax
-	movzb		(%rsp,%r10),%ecx
-	lea		1(%r10),%r10
+	movzb		($inp,%r9),%eax
+	movzb		(%rsp,%r9),%ecx
+	lea		1(%r9),%r9
 	xor		%ecx,%eax
-	mov		%al,-1($out,%r10)
+	mov		%al,-1($out,%r9)
 	dec		$len
 	jnz		.Loop_tail8x
 
@@ -2463,19 +2467,19 @@ $code.=<<___;
 	vzeroall
 ___
 $code.=<<___	if ($win64);
-	movaps		-0xa8(%r9),%xmm6
-	movaps		-0x98(%r9),%xmm7
-	movaps		-0x88(%r9),%xmm8
-	movaps		-0x78(%r9),%xmm9
-	movaps		-0x68(%r9),%xmm10
-	movaps		-0x58(%r9),%xmm11
-	movaps		-0x48(%r9),%xmm12
-	movaps		-0x38(%r9),%xmm13
-	movaps		-0x28(%r9),%xmm14
-	movaps		-0x18(%r9),%xmm15
+	movaps		-0xa8(%r10),%xmm6
+	movaps		-0x98(%r10),%xmm7
+	movaps		-0x88(%r10),%xmm8
+	movaps		-0x78(%r10),%xmm9
+	movaps		-0x68(%r10),%xmm10
+	movaps		-0x58(%r10),%xmm11
+	movaps		-0x48(%r10),%xmm12
+	movaps		-0x38(%r10),%xmm13
+	movaps		-0x28(%r10),%xmm14
+	movaps		-0x18(%r10),%xmm15
 ___
 $code.=<<___;
-	lea		(%r9),%rsp
+	lea		(%r10),%rsp
 .cfi_def_cfa_register	%rsp
 .Lavx2_epilogue:
 	ret
@@ -2534,16 +2538,17 @@ $code.=<<___;
 ChaCha20_avx512:
 .cfi_startproc
 .LChaCha20_avx512:
-	mov	%rsp,%r9		# frame pointer
-.cfi_def_cfa_register	%r9
+	mov	%rsp,%r10		# frame pointer
+.cfi_def_cfa_register	%r10
 	cmp	\$512,$len
 	ja	.LChaCha20_16x
 
 	sub	\$64+$xframe,%rsp
+	and	\$-16,%rsp
 ___
 $code.=<<___	if ($win64);
-	movaps	%xmm6,-0x28(%r9)
-	movaps	%xmm7,-0x18(%r9)
+	movaps	%xmm6,-0x28(%r10)
+	movaps	%xmm7,-0x18(%r10)
 .Lavx512_body:
 ___
 $code.=<<___;
@@ -2707,11 +2712,11 @@ $code.=<<___;
 	vzeroall
 ___
 $code.=<<___	if ($win64);
-	movaps	-0x28(%r9),%xmm6
-	movaps	-0x18(%r9),%xmm7
+	movaps	-0x28(%r10),%xmm6
+	movaps	-0x18(%r10),%xmm7
 ___
 $code.=<<___;
-	lea	(%r9),%rsp
+	lea	(%r10),%rsp
 .cfi_def_cfa_register	%rsp
 .Lavx512_epilogue:
 	ret
@@ -2730,16 +2735,16 @@ $code.=<<___;
 ChaCha20_avx512vl:
 .cfi_startproc
 .LChaCha20_avx512vl:
-	mov	%rsp,%r9		# frame pointer
-.cfi_def_cfa_register	%r9
+	mov	%rsp,%r10		# frame pointer
+.cfi_def_cfa_register	%r10
 	cmp	\$128,$len
 	ja	.LChaCha20_8xvl
 
 	sub	\$64+$xframe,%rsp
 ___
 $code.=<<___	if ($win64);
-	movaps	%xmm6,-0x28(%r9)
-	movaps	%xmm7,-0x18(%r9)
+	movaps	%xmm6,-0x28(%r10)
+	movaps	%xmm7,-0x18(%r10)
 .Lavx512vl_body:
 ___
 $code.=<<___;
@@ -2860,11 +2865,11 @@ $code.=<<___;
 	vzeroall
 ___
 $code.=<<___	if ($win64);
-	movaps	-0x28(%r9),%xmm6
-	movaps	-0x18(%r9),%xmm7
+	movaps	-0x28(%r10),%xmm6
+	movaps	-0x18(%r10),%xmm7
 ___
 $code.=<<___;
-	lea	(%r9),%rsp
+	lea	(%r10),%rsp
 .cfi_def_cfa_register	%rsp
 .Lavx512vl_epilogue:
 	ret
@@ -2952,29 +2957,29 @@ $code.=<<___;
 ChaCha20_16x:
 .cfi_startproc
 .LChaCha20_16x:
-	mov		%rsp,%r9		# frame register
-.cfi_def_cfa_register	%r9
+	mov		%rsp,%r10		# frame register
+.cfi_def_cfa_register	%r10
 	sub		\$64+$xframe,%rsp
 	and		\$-64,%rsp
 ___
 $code.=<<___	if ($win64);
-	movaps		%xmm6,-0xa8(%r9)
-	movaps		%xmm7,-0x98(%r9)
-	movaps		%xmm8,-0x88(%r9)
-	movaps		%xmm9,-0x78(%r9)
-	movaps		%xmm10,-0x68(%r9)
-	movaps		%xmm11,-0x58(%r9)
-	movaps		%xmm12,-0x48(%r9)
-	movaps		%xmm13,-0x38(%r9)
-	movaps		%xmm14,-0x28(%r9)
-	movaps		%xmm15,-0x18(%r9)
+	movaps		%xmm6,-0xa8(%r10)
+	movaps		%xmm7,-0x98(%r10)
+	movaps		%xmm8,-0x88(%r10)
+	movaps		%xmm9,-0x78(%r10)
+	movaps		%xmm10,-0x68(%r10)
+	movaps		%xmm11,-0x58(%r10)
+	movaps		%xmm12,-0x48(%r10)
+	movaps		%xmm13,-0x38(%r10)
+	movaps		%xmm14,-0x28(%r10)
+	movaps		%xmm15,-0x18(%r10)
 .L16x_body:
 ___
 $code.=<<___;
 	vzeroupper
 
-	lea		.Lsigma(%rip),%r10
-	vbroadcasti32x4	(%r10),$xa3		# key[0]
+	lea		.Lsigma(%rip),%r9
+	vbroadcasti32x4	(%r9),$xa3		# key[0]
 	vbroadcasti32x4	($key),$xb3		# key[1]
 	vbroadcasti32x4	16($key),$xc3		# key[2]
 	vbroadcasti32x4	($counter),$xd3		# key[3]
@@ -3021,10 +3026,10 @@ $code.=<<___;
 
 .align	32
 .Loop_outer16x:
-	vpbroadcastd	0(%r10),$xa0		# reload key
-	vpbroadcastd	4(%r10),$xa1
-	vpbroadcastd	8(%r10),$xa2
-	vpbroadcastd	12(%r10),$xa3
+	vpbroadcastd	0(%r9),$xa0		# reload key
+	vpbroadcastd	4(%r9),$xa1
+	vpbroadcastd	8(%r9),$xa2
+	vpbroadcastd	12(%r9),$xa3
 	vpaddd		.Lsixteen(%rip),@key[12],@key[12]	# next SIMD counters
 	vmovdqa64	@key[4],$xb0
 	vmovdqa64	@key[5],$xb1
@@ -3215,7 +3220,7 @@ $code.=<<___;
 
 .align	32
 .Ltail16x:
-	xor		%r10,%r10
+	xor		%r9,%r9
 	sub		$inp,$out
 	cmp		\$64*1,$len
 	jb		.Less_than_64_16x
@@ -3343,11 +3348,11 @@ $code.=<<___;
 	and		\$63,$len
 
 .Loop_tail16x:
-	movzb		($inp,%r10),%eax
-	movzb		(%rsp,%r10),%ecx
-	lea		1(%r10),%r10
+	movzb		($inp,%r9),%eax
+	movzb		(%rsp,%r9),%ecx
+	lea		1(%r9),%r9
 	xor		%ecx,%eax
-	mov		%al,-1($out,%r10)
+	mov		%al,-1($out,%r9)
 	dec		$len
 	jnz		.Loop_tail16x
 
@@ -3358,19 +3363,19 @@ $code.=<<___;
 	vzeroall
 ___
 $code.=<<___	if ($win64);
-	movaps		-0xa8(%r9),%xmm6
-	movaps		-0x98(%r9),%xmm7
-	movaps		-0x88(%r9),%xmm8
-	movaps		-0x78(%r9),%xmm9
-	movaps		-0x68(%r9),%xmm10
-	movaps		-0x58(%r9),%xmm11
-	movaps		-0x48(%r9),%xmm12
-	movaps		-0x38(%r9),%xmm13
-	movaps		-0x28(%r9),%xmm14
-	movaps		-0x18(%r9),%xmm15
+	movaps		-0xa8(%r10),%xmm6
+	movaps		-0x98(%r10),%xmm7
+	movaps		-0x88(%r10),%xmm8
+	movaps		-0x78(%r10),%xmm9
+	movaps		-0x68(%r10),%xmm10
+	movaps		-0x58(%r10),%xmm11
+	movaps		-0x48(%r10),%xmm12
+	movaps		-0x38(%r10),%xmm13
+	movaps		-0x28(%r10),%xmm14
+	movaps		-0x18(%r10),%xmm15
 ___
 $code.=<<___;
-	lea		(%r9),%rsp
+	lea		(%r10),%rsp
 .cfi_def_cfa_register	%rsp
 .L16x_epilogue:
 	ret
@@ -3392,29 +3397,29 @@ $code.=<<___;
 ChaCha20_8xvl:
 .cfi_startproc
 .LChaCha20_8xvl:
-	mov		%rsp,%r9		# frame register
-.cfi_def_cfa_register	%r9
+	mov		%rsp,%r10		# frame register
+.cfi_def_cfa_register	%r10
 	sub		\$64+$xframe,%rsp
 	and		\$-64,%rsp
 ___
 $code.=<<___	if ($win64);
-	movaps		%xmm6,-0xa8(%r9)
-	movaps		%xmm7,-0x98(%r9)
-	movaps		%xmm8,-0x88(%r9)
-	movaps		%xmm9,-0x78(%r9)
-	movaps		%xmm10,-0x68(%r9)
-	movaps		%xmm11,-0x58(%r9)
-	movaps		%xmm12,-0x48(%r9)
-	movaps		%xmm13,-0x38(%r9)
-	movaps		%xmm14,-0x28(%r9)
-	movaps		%xmm15,-0x18(%r9)
+	movaps		%xmm6,-0xa8(%r10)
+	movaps		%xmm7,-0x98(%r10)
+	movaps		%xmm8,-0x88(%r10)
+	movaps		%xmm9,-0x78(%r10)
+	movaps		%xmm10,-0x68(%r10)
+	movaps		%xmm11,-0x58(%r10)
+	movaps		%xmm12,-0x48(%r10)
+	movaps		%xmm13,-0x38(%r10)
+	movaps		%xmm14,-0x28(%r10)
+	movaps		%xmm15,-0x18(%r10)
 .L8xvl_body:
 ___
 $code.=<<___;
 	vzeroupper
 
-	lea		.Lsigma(%rip),%r10
-	vbroadcasti128	(%r10),$xa3		# key[0]
+	lea		.Lsigma(%rip),%r9
+	vbroadcasti128	(%r9),$xa3		# key[0]
 	vbroadcasti128	($key),$xb3		# key[1]
 	vbroadcasti128	16($key),$xc3		# key[2]
 	vbroadcasti128	($counter),$xd3		# key[3]
@@ -3461,10 +3466,10 @@ $code.=<<___;
 
 .align	32
 .Loop_outer8xvl:
-	#vpbroadcastd	0(%r10),$xa0		# reload key
-	#vpbroadcastd	4(%r10),$xa1
-	vpbroadcastd	8(%r10),$xa2
-	vpbroadcastd	12(%r10),$xa3
+	#vpbroadcastd	0(%r9),$xa0		# reload key
+	#vpbroadcastd	4(%r9),$xa1
+	vpbroadcastd	8(%r9),$xa2
+	vpbroadcastd	12(%r9),$xa3
 	vpaddd		.Leight(%rip),@key[12],@key[12]	# next SIMD counters
 	vmovdqa64	@key[4],$xb0
 	vmovdqa64	@key[5],$xb1
@@ -3632,8 +3637,8 @@ $code.=<<___;
 	vmovdqu		$xd3,0x60($out)
 	lea		($out,%rax),$out	# size optimization
 
-	vpbroadcastd	0(%r10),%ymm0		# reload key
-	vpbroadcastd	4(%r10),%ymm1
+	vpbroadcastd	0(%r9),%ymm0		# reload key
+	vpbroadcastd	4(%r9),%ymm1
 
 	sub		\$64*8,$len
 	jnz		.Loop_outer8xvl
@@ -3646,7 +3651,7 @@ $code.=<<___;
 ___
 $xa0 = "%ymm8";
 $code.=<<___;
-	xor		%r10,%r10
+	xor		%r9,%r9
 	sub		$inp,$out
 	cmp		\$64*1,$len
 	jb		.Less_than_64_8xvl
@@ -3732,11 +3737,11 @@ $code.=<<___;
 	and		\$63,$len
 
 .Loop_tail8xvl:
-	movzb		($inp,%r10),%eax
-	movzb		(%rsp,%r10),%ecx
-	lea		1(%r10),%r10
+	movzb		($inp,%r9),%eax
+	movzb		(%rsp,%r9),%ecx
+	lea		1(%r9),%r9
 	xor		%ecx,%eax
-	mov		%al,-1($out,%r10)
+	mov		%al,-1($out,%r9)
 	dec		$len
 	jnz		.Loop_tail8xvl
 
@@ -3748,19 +3753,19 @@ $code.=<<___;
 	vzeroall
 ___
 $code.=<<___	if ($win64);
-	movaps		-0xa8(%r9),%xmm6
-	movaps		-0x98(%r9),%xmm7
-	movaps		-0x88(%r9),%xmm8
-	movaps		-0x78(%r9),%xmm9
-	movaps		-0x68(%r9),%xmm10
-	movaps		-0x58(%r9),%xmm11
-	movaps		-0x48(%r9),%xmm12
-	movaps		-0x38(%r9),%xmm13
-	movaps		-0x28(%r9),%xmm14
-	movaps		-0x18(%r9),%xmm15
+	movaps		-0xa8(%r10),%xmm6
+	movaps		-0x98(%r10),%xmm7
+	movaps		-0x88(%r10),%xmm8
+	movaps		-0x78(%r10),%xmm9
+	movaps		-0x68(%r10),%xmm10
+	movaps		-0x58(%r10),%xmm11
+	movaps		-0x48(%r10),%xmm12
+	movaps		-0x38(%r10),%xmm13
+	movaps		-0x28(%r10),%xmm14
+	movaps		-0x18(%r10),%xmm15
 ___
 $code.=<<___;
-	lea		(%r9),%rsp
+	lea		(%r10),%rsp
 .cfi_def_cfa_register	%rsp
 .L8xvl_epilogue:
 	ret
