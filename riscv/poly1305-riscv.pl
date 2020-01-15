@@ -298,7 +298,7 @@ my ($in0,$in1,$in2,$in3,$tmp0,$tmp1,$tmp2,$tmp3) =
    ($a4,$a5,$a6,$a7,$t0,$t1,$t2,$t3);
 
 $code.=<<___;
-#if __SIZEOF_SIZE_T__ == 4
+#if __riscv_xlen == 32
 # define PUSH	sw
 # define POP	lw
 # define MULX(hi,lo,a,b)	mulhu hi,a,b; mul lo,a,b
@@ -312,6 +312,7 @@ $code.=<<___;
 # define POP	ld
 # define MULX(hi,lo,a,b)	slli b,b,32; srli b,b,32; mul hi,a,b; addiw lo,hi,0; srai hi,hi,32
 #endif
+#define __SIZEOF_REG_T__	(__riscv_xlen/8)
 
 .option	pic
 .text
@@ -393,17 +394,17 @@ poly1305_blocks:
 	srli	$len,$len,4		# number of complete blocks
 	beqz	$len,.Labort
 
-	addi	$sp,$sp,-__SIZEOF_SIZE_T__*12
-	PUSH	$ra, __SIZEOF_SIZE_T__*11($sp)
-	PUSH	$s0, __SIZEOF_SIZE_T__*10($sp)
-	PUSH	$s1, __SIZEOF_SIZE_T__*9($sp)
-	PUSH	$s2, __SIZEOF_SIZE_T__*8($sp)
-	PUSH	$s3, __SIZEOF_SIZE_T__*7($sp)
-	PUSH	$s4, __SIZEOF_SIZE_T__*6($sp)
-	PUSH	$s5, __SIZEOF_SIZE_T__*5($sp)
-	PUSH	$s6, __SIZEOF_SIZE_T__*4($sp)
-	PUSH	$s7, __SIZEOF_SIZE_T__*3($sp)
-	PUSH	$s8, __SIZEOF_SIZE_T__*2($sp)
+	addi	$sp,$sp,-__SIZEOF_REG_T__*12
+	PUSH	$ra, __SIZEOF_REG_T__*11($sp)
+	PUSH	$s0, __SIZEOF_REG_T__*10($sp)
+	PUSH	$s1, __SIZEOF_REG_T__*9($sp)
+	PUSH	$s2, __SIZEOF_REG_T__*8($sp)
+	PUSH	$s3, __SIZEOF_REG_T__*7($sp)
+	PUSH	$s4, __SIZEOF_REG_T__*6($sp)
+	PUSH	$s5, __SIZEOF_REG_T__*5($sp)
+	PUSH	$s6, __SIZEOF_REG_T__*4($sp)
+	PUSH	$s7, __SIZEOF_REG_T__*3($sp)
+	PUSH	$s8, __SIZEOF_REG_T__*2($sp)
 
 	andi	$shr,$inp,3
 	andi	$inp,$inp,-8		# align $inp
@@ -604,17 +605,17 @@ poly1305_blocks:
 	sw	$h3,12($ctx)
 	sw	$h4,16($ctx)
 
-	POP	$ra, __SIZEOF_SIZE_T__*11($sp)
-	POP	$s0, __SIZEOF_SIZE_T__*10($sp)
-	POP	$s1, __SIZEOF_SIZE_T__*9($sp)
-	POP	$s2, __SIZEOF_SIZE_T__*8($sp)
-	POP	$s3, __SIZEOF_SIZE_T__*7($sp)
-	POP	$s4, __SIZEOF_SIZE_T__*6($sp)
-	POP	$s5, __SIZEOF_SIZE_T__*5($sp)
-	POP	$s6, __SIZEOF_SIZE_T__*4($sp)
-	POP	$s7, __SIZEOF_SIZE_T__*3($sp)
-	POP	$s8, __SIZEOF_SIZE_T__*2($sp)
-	addi	$sp,$sp,__SIZEOF_SIZE_T__*12
+	POP	$ra, __SIZEOF_REG_T__*11($sp)
+	POP	$s0, __SIZEOF_REG_T__*10($sp)
+	POP	$s1, __SIZEOF_REG_T__*9($sp)
+	POP	$s2, __SIZEOF_REG_T__*8($sp)
+	POP	$s3, __SIZEOF_REG_T__*7($sp)
+	POP	$s4, __SIZEOF_REG_T__*6($sp)
+	POP	$s5, __SIZEOF_REG_T__*5($sp)
+	POP	$s6, __SIZEOF_REG_T__*4($sp)
+	POP	$s7, __SIZEOF_REG_T__*3($sp)
+	POP	$s8, __SIZEOF_REG_T__*2($sp)
+	addi	$sp,$sp,__SIZEOF_REG_T__*12
 .Labort:
 	ret
 .size	poly1305_blocks,.-poly1305_blocks

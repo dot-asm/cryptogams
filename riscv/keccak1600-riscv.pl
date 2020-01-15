@@ -797,7 +797,7 @@ my @D = map("x$_", (22..31));
 my @T = map("x$_", (6..9));
 
 $code.=<<___;
-#if __SIZEOF_SIZE_T__ == 4
+#if __riscv_xlen == 32
 # define PUSH	sw
 # define POP	lw
 # define srlw	srl
@@ -806,6 +806,7 @@ $code.=<<___;
 # define PUSH	sd
 # define POP	ld
 #endif
+#define __SIZEOF_REG_T__	(__riscv_xlen/8)
 
 .text
 
@@ -814,7 +815,7 @@ $code.=<<___;
 .type	__KeccakF1600, \@function
 __KeccakF1600:
 	addi	$sp, $sp, -224
-	PUSH	$ra, 224-__SIZEOF_SIZE_T__*1($sp)
+	PUSH	$ra, 224-__SIZEOF_REG_T__*1($sp)
 
 	mv	$a1, $sp
 	lla	$ra, iotas
@@ -1370,27 +1371,27 @@ __KeccakF1600:
 	sw	@D[9], $A[4][4]+4($a0)
 	bnez	@T[0], .Loop
 
-	POP	$ra, 224-__SIZEOF_SIZE_T__*1($sp)
+	POP	$ra, 224-__SIZEOF_REG_T__*1($sp)
 	addi	$sp, $sp, 224
 	ret
 .size	__KeccakF1600, .-__KeccakF1600
 
 .type	KeccakF1600, \@function
 KeccakF1600:
-	addi	$sp,  $sp, -__SIZEOF_SIZE_T__*16
-	PUSH	$ra,  __SIZEOF_SIZE_T__*15($sp)
-	PUSH	$s0,  __SIZEOF_SIZE_T__*14($sp)
-	PUSH	$s1,  __SIZEOF_SIZE_T__*13($sp)
-	PUSH	$s2,  __SIZEOF_SIZE_T__*12($sp)
-	PUSH	$s3,  __SIZEOF_SIZE_T__*11($sp)
-	PUSH	$s4,  __SIZEOF_SIZE_T__*10($sp)
-	PUSH	$s5,  __SIZEOF_SIZE_T__*9($sp)
-	PUSH	$s6,  __SIZEOF_SIZE_T__*8($sp)
-	PUSH	$s7,  __SIZEOF_SIZE_T__*7($sp)
-	PUSH	$s8,  __SIZEOF_SIZE_T__*6($sp)
-	PUSH	$s9,  __SIZEOF_SIZE_T__*5($sp)
-	PUSH	$s10, __SIZEOF_SIZE_T__*4($sp)
-	PUSH	$s11, __SIZEOF_SIZE_T__*3($sp)
+	addi	$sp,  $sp, -__SIZEOF_REG_T__*16
+	PUSH	$ra,  __SIZEOF_REG_T__*15($sp)
+	PUSH	$s0,  __SIZEOF_REG_T__*14($sp)
+	PUSH	$s1,  __SIZEOF_REG_T__*13($sp)
+	PUSH	$s2,  __SIZEOF_REG_T__*12($sp)
+	PUSH	$s3,  __SIZEOF_REG_T__*11($sp)
+	PUSH	$s4,  __SIZEOF_REG_T__*10($sp)
+	PUSH	$s5,  __SIZEOF_REG_T__*9($sp)
+	PUSH	$s6,  __SIZEOF_REG_T__*8($sp)
+	PUSH	$s7,  __SIZEOF_REG_T__*7($sp)
+	PUSH	$s8,  __SIZEOF_REG_T__*6($sp)
+	PUSH	$s9,  __SIZEOF_REG_T__*5($sp)
+	PUSH	$s10, __SIZEOF_REG_T__*4($sp)
+	PUSH	$s11, __SIZEOF_REG_T__*3($sp)
 
 	lw	$s0, $A[0][1]+0($a0)
 	lw	$s1, $A[0][1]+4($a0)
@@ -1468,20 +1469,20 @@ KeccakF1600:
 	sw	$a6, $A[4][0]+0($a0)
 	sw	$a7, $A[4][0]+4($a0)
 
-	POP	$ra,  __SIZEOF_SIZE_T__*15($sp)
-	POP	$s0,  __SIZEOF_SIZE_T__*14($sp)
-	POP	$s1,  __SIZEOF_SIZE_T__*13($sp)
-	POP	$s2,  __SIZEOF_SIZE_T__*12($sp)
-	POP	$s3,  __SIZEOF_SIZE_T__*11($sp)
-	POP	$s4,  __SIZEOF_SIZE_T__*10($sp)
-	POP	$s5,  __SIZEOF_SIZE_T__*9($sp)
-	POP	$s6,  __SIZEOF_SIZE_T__*8($sp)
-	POP	$s7,  __SIZEOF_SIZE_T__*7($sp)
-	POP	$s8,  __SIZEOF_SIZE_T__*6($sp)
-	POP	$s9,  __SIZEOF_SIZE_T__*5($sp)
-	POP	$s10, __SIZEOF_SIZE_T__*4($sp)
-	POP	$s11, __SIZEOF_SIZE_T__*3($sp)
-	addi	$sp,  $sp, __SIZEOF_SIZE_T__*16
+	POP	$ra,  __SIZEOF_REG_T__*15($sp)
+	POP	$s0,  __SIZEOF_REG_T__*14($sp)
+	POP	$s1,  __SIZEOF_REG_T__*13($sp)
+	POP	$s2,  __SIZEOF_REG_T__*12($sp)
+	POP	$s3,  __SIZEOF_REG_T__*11($sp)
+	POP	$s4,  __SIZEOF_REG_T__*10($sp)
+	POP	$s5,  __SIZEOF_REG_T__*9($sp)
+	POP	$s6,  __SIZEOF_REG_T__*8($sp)
+	POP	$s7,  __SIZEOF_REG_T__*7($sp)
+	POP	$s8,  __SIZEOF_REG_T__*6($sp)
+	POP	$s9,  __SIZEOF_REG_T__*5($sp)
+	POP	$s10, __SIZEOF_REG_T__*4($sp)
+	POP	$s11, __SIZEOF_REG_T__*3($sp)
+	addi	$sp,  $sp, __SIZEOF_REG_T__*16
 	ret
 .size	KeccakF1600, .-KeccakF1600
 ___
@@ -1491,21 +1492,21 @@ $code.=<<___;
 .globl	SHA3_absorb
 .type	SHA3_absorb, \@function
 SHA3_absorb:
-	addi	$sp,  $sp, -__SIZEOF_SIZE_T__*20
+	addi	$sp,  $sp, -__SIZEOF_REG_T__*20
 	bltu	$len, $bsz, .Labsorb_abort	# len < bsz?
-	PUSH	$ra,  __SIZEOF_SIZE_T__*19($sp)
-	PUSH	$s0,  __SIZEOF_SIZE_T__*18($sp)
-	PUSH	$s1,  __SIZEOF_SIZE_T__*17($sp)
-	PUSH	$s2,  __SIZEOF_SIZE_T__*16($sp)
-	PUSH	$s3,  __SIZEOF_SIZE_T__*15($sp)
-	PUSH	$s4,  __SIZEOF_SIZE_T__*14($sp)
-	PUSH	$s5,  __SIZEOF_SIZE_T__*13($sp)
-	PUSH	$s6,  __SIZEOF_SIZE_T__*12($sp)
-	PUSH	$s7,  __SIZEOF_SIZE_T__*11($sp)
-	PUSH	$s8,  __SIZEOF_SIZE_T__*10($sp)
-	PUSH	$s9,  __SIZEOF_SIZE_T__*9($sp)
-	PUSH	$s10, __SIZEOF_SIZE_T__*8($sp)
-	PUSH	$s11, __SIZEOF_SIZE_T__*7($sp)
+	PUSH	$ra,  __SIZEOF_REG_T__*19($sp)
+	PUSH	$s0,  __SIZEOF_REG_T__*18($sp)
+	PUSH	$s1,  __SIZEOF_REG_T__*17($sp)
+	PUSH	$s2,  __SIZEOF_REG_T__*16($sp)
+	PUSH	$s3,  __SIZEOF_REG_T__*15($sp)
+	PUSH	$s4,  __SIZEOF_REG_T__*14($sp)
+	PUSH	$s5,  __SIZEOF_REG_T__*13($sp)
+	PUSH	$s6,  __SIZEOF_REG_T__*12($sp)
+	PUSH	$s7,  __SIZEOF_REG_T__*11($sp)
+	PUSH	$s8,  __SIZEOF_REG_T__*10($sp)
+	PUSH	$s9,  __SIZEOF_REG_T__*9($sp)
+	PUSH	$s10, __SIZEOF_REG_T__*8($sp)
+	PUSH	$s11, __SIZEOF_REG_T__*7($sp)
 
 	lw	$s0, $A[0][1]+0($a0)
 	lw	$s1, $A[0][1]+4($a0)
@@ -1544,13 +1545,13 @@ SHA3_absorb:
 	sw	$a6, $A[4][0]+0($a0)
 	sw	$a7, $A[4][0]+4($a0)
 
-	PUSH	$bsz, __SIZEOF_SIZE_T__*2($sp)
+	PUSH	$bsz, __SIZEOF_REG_T__*2($sp)
 
 .Loop_absorb:
 	sub	$t1, $len, $bsz
 	add	$t2, $inp, $bsz		# next input block
-	PUSH	$t1, __SIZEOF_SIZE_T__*1($sp)
-	PUSH	$t2, __SIZEOF_SIZE_T__*0($sp)
+	PUSH	$t1, __SIZEOF_REG_T__*1($sp)
+	PUSH	$t2, __SIZEOF_REG_T__*0($sp)
 	mv	$A_flat, $a0
 	lui	$s0, 0x55555
 	lui	$s1, 0x33333
@@ -1660,9 +1661,9 @@ SHA3_absorb:
 
 	jal	__KeccakF1600
 
-	POP	$bsz, __SIZEOF_SIZE_T__*2($sp)
-	POP	$len, __SIZEOF_SIZE_T__*1($sp)
-	POP	$inp, __SIZEOF_SIZE_T__*0($sp)
+	POP	$bsz, __SIZEOF_REG_T__*2($sp)
+	POP	$len, __SIZEOF_REG_T__*1($sp)
+	POP	$inp, __SIZEOF_REG_T__*0($sp)
 
 	bgeu	$len, $bsz, .Loop_absorb
 
@@ -1703,22 +1704,22 @@ SHA3_absorb:
 	sw	$a6, $A[4][0]+0($a0)
 	sw	$a7, $A[4][0]+4($a0)
 
-	POP	$ra,  __SIZEOF_SIZE_T__*19($sp)
-	POP	$s0,  __SIZEOF_SIZE_T__*18($sp)
-	POP	$s1,  __SIZEOF_SIZE_T__*17($sp)
-	POP	$s2,  __SIZEOF_SIZE_T__*16($sp)
-	POP	$s3,  __SIZEOF_SIZE_T__*15($sp)
-	POP	$s4,  __SIZEOF_SIZE_T__*14($sp)
-	POP	$s5,  __SIZEOF_SIZE_T__*13($sp)
-	POP	$s6,  __SIZEOF_SIZE_T__*12($sp)
-	POP	$s7,  __SIZEOF_SIZE_T__*11($sp)
-	POP	$s8,  __SIZEOF_SIZE_T__*10($sp)
-	POP	$s9,  __SIZEOF_SIZE_T__*9($sp)
-	POP	$s10, __SIZEOF_SIZE_T__*8($sp)
-	POP	$s11, __SIZEOF_SIZE_T__*7($sp)
+	POP	$ra,  __SIZEOF_REG_T__*19($sp)
+	POP	$s0,  __SIZEOF_REG_T__*18($sp)
+	POP	$s1,  __SIZEOF_REG_T__*17($sp)
+	POP	$s2,  __SIZEOF_REG_T__*16($sp)
+	POP	$s3,  __SIZEOF_REG_T__*15($sp)
+	POP	$s4,  __SIZEOF_REG_T__*14($sp)
+	POP	$s5,  __SIZEOF_REG_T__*13($sp)
+	POP	$s6,  __SIZEOF_REG_T__*12($sp)
+	POP	$s7,  __SIZEOF_REG_T__*11($sp)
+	POP	$s8,  __SIZEOF_REG_T__*10($sp)
+	POP	$s9,  __SIZEOF_REG_T__*9($sp)
+	POP	$s10, __SIZEOF_REG_T__*8($sp)
+	POP	$s11, __SIZEOF_REG_T__*7($sp)
 .Labsorb_abort:
 	mv	$a0, $len		# return value
-	addi	$sp, $sp, __SIZEOF_SIZE_T__*20
+	addi	$sp, $sp, __SIZEOF_REG_T__*20
 	ret
 .size	SHA3_absorb, .-SHA3_absorb
 ___
@@ -1730,22 +1731,22 @@ $code.=<<___;
 .align	5
 .type	SHA3_squeeze, \@function
 SHA3_squeeze:
-	addi	$sp,  $sp, -__SIZEOF_SIZE_T__*16
-	PUSH	$ra,  __SIZEOF_SIZE_T__*15($sp)
-	PUSH	$s0,  __SIZEOF_SIZE_T__*14($sp)
-	PUSH	$s1,  __SIZEOF_SIZE_T__*13($sp)
-	PUSH	$s2,  __SIZEOF_SIZE_T__*12($sp)
-	PUSH	$s3,  __SIZEOF_SIZE_T__*11($sp)
-	PUSH	$s4,  __SIZEOF_SIZE_T__*10($sp)
-	PUSH	$s5,  __SIZEOF_SIZE_T__*9($sp)
-	PUSH	$s6,  __SIZEOF_SIZE_T__*8($sp)
-	PUSH	$s7,  __SIZEOF_SIZE_T__*7($sp)
-	PUSH	$s8,  __SIZEOF_SIZE_T__*6($sp)
-	PUSH	$s9,  __SIZEOF_SIZE_T__*5($sp)
-	PUSH	$s10, __SIZEOF_SIZE_T__*4($sp)
-	PUSH	$s11, __SIZEOF_SIZE_T__*3($sp)
+	addi	$sp,  $sp, -__SIZEOF_REG_T__*16
+	PUSH	$ra,  __SIZEOF_REG_T__*15($sp)
+	PUSH	$s0,  __SIZEOF_REG_T__*14($sp)
+	PUSH	$s1,  __SIZEOF_REG_T__*13($sp)
+	PUSH	$s2,  __SIZEOF_REG_T__*12($sp)
+	PUSH	$s3,  __SIZEOF_REG_T__*11($sp)
+	PUSH	$s4,  __SIZEOF_REG_T__*10($sp)
+	PUSH	$s5,  __SIZEOF_REG_T__*9($sp)
+	PUSH	$s6,  __SIZEOF_REG_T__*8($sp)
+	PUSH	$s7,  __SIZEOF_REG_T__*7($sp)
+	PUSH	$s8,  __SIZEOF_REG_T__*6($sp)
+	PUSH	$s9,  __SIZEOF_REG_T__*5($sp)
+	PUSH	$s10, __SIZEOF_REG_T__*4($sp)
+	PUSH	$s11, __SIZEOF_REG_T__*3($sp)
 
-	PUSH	$bsz, __SIZEOF_SIZE_T__*2($sp)
+	PUSH	$bsz, __SIZEOF_REG_T__*2($sp)
 	mv	$A_flat, $a0
 
 	lui	$s4, 0x55555
@@ -1854,14 +1855,14 @@ SHA3_squeeze:
 	addi	$bsz, $bsz, -8
 	bnez	$bsz, .Loop_squeeze
 
-	PUSH	$len, __SIZEOF_SIZE_T__*1($sp)
-	PUSH	$out, __SIZEOF_SIZE_T__*0($sp)
+	PUSH	$len, __SIZEOF_REG_T__*1($sp)
+	PUSH	$out, __SIZEOF_REG_T__*0($sp)
 
 	jal	KeccakF1600
 
-	POP	$out, __SIZEOF_SIZE_T__*0($sp)
-	POP	$len, __SIZEOF_SIZE_T__*1($sp)
-	POP	$bsz, __SIZEOF_SIZE_T__*2($sp)
+	POP	$out, __SIZEOF_REG_T__*0($sp)
+	POP	$len, __SIZEOF_REG_T__*1($sp)
+	POP	$bsz, __SIZEOF_REG_T__*2($sp)
 	mv	$A_flat, $a0
 	j	.Loop_squeeze
 
@@ -1874,20 +1875,20 @@ SHA3_squeeze:
 	j	.Lsqueeze_tail
 
 .Lsqueeze_done:
-	POP	$ra,  __SIZEOF_SIZE_T__*15($sp)
-	POP	$s0,  __SIZEOF_SIZE_T__*14($sp)
-	POP	$s1,  __SIZEOF_SIZE_T__*13($sp)
-	POP	$s2,  __SIZEOF_SIZE_T__*12($sp)
-	POP	$s3,  __SIZEOF_SIZE_T__*11($sp)
-	POP	$s4,  __SIZEOF_SIZE_T__*10($sp)
-	POP	$s5,  __SIZEOF_SIZE_T__*9($sp)
-	POP	$s6,  __SIZEOF_SIZE_T__*8($sp)
-	POP	$s7,  __SIZEOF_SIZE_T__*7($sp)
-	POP	$s8,  __SIZEOF_SIZE_T__*6($sp)
-	POP	$s9,  __SIZEOF_SIZE_T__*5($sp)
-	POP	$s10, __SIZEOF_SIZE_T__*4($sp)
-	POP	$s11, __SIZEOF_SIZE_T__*3($sp)
-	addi	$sp,  $sp, __SIZEOF_SIZE_T__*16
+	POP	$ra,  __SIZEOF_REG_T__*15($sp)
+	POP	$s0,  __SIZEOF_REG_T__*14($sp)
+	POP	$s1,  __SIZEOF_REG_T__*13($sp)
+	POP	$s2,  __SIZEOF_REG_T__*12($sp)
+	POP	$s3,  __SIZEOF_REG_T__*11($sp)
+	POP	$s4,  __SIZEOF_REG_T__*10($sp)
+	POP	$s5,  __SIZEOF_REG_T__*9($sp)
+	POP	$s6,  __SIZEOF_REG_T__*8($sp)
+	POP	$s7,  __SIZEOF_REG_T__*7($sp)
+	POP	$s8,  __SIZEOF_REG_T__*6($sp)
+	POP	$s9,  __SIZEOF_REG_T__*5($sp)
+	POP	$s10, __SIZEOF_REG_T__*4($sp)
+	POP	$s11, __SIZEOF_REG_T__*3($sp)
+	addi	$sp,  $sp, __SIZEOF_REG_T__*16
 	ret
 .size	SHA3_squeeze, .-SHA3_squeeze
 ___
