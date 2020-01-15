@@ -32,12 +32,12 @@
 # P4			+22%		+40%
 # Sandy Bridge		-3%		+11%
 # Haswell		-1%		+13%
-# Broadwell(***)	+30%		+35%
-# Skylake(***)		+33%		+47%
+# Broadwell(***)	+40%		+45%
+# Skylake(***)		+41%		+56%
 # Silvermont		+20%		+26%
 # Goldmont		+40%		+50%
 # Bulldozer		+20%		+9%
-# Ryzen(***)		+43%		+40%
+# Ryzen(***)		+46%		+44%
 # VIA			+170%		+120%
 #
 # (*)	amd64-51 is popular assembly implementation with 2^51 radix,
@@ -681,10 +681,9 @@ x25519_fe64_sqr:
 	adc	\$0,$acc2
 	adc	\$0,$acc3
 
-	sbb	%rax,%rax		# cf -> mask
-	and	\$38,%rax
+	lea	38($acc0), %rax
+	cmovc	%rax,$acc0		# %cf ? $acc0+38 : $acc0
 
-	add	%rax,$acc0
 	mov	$acc1,8*1(%rdi)
 	mov	$acc2,8*2(%rdi)
 	mov	$acc3,8*3(%rdi)
@@ -731,10 +730,9 @@ x25519_fe64_mul121666:
 	adc	\$0,$acc2
 	adc	\$0,$acc3
 
-	sbb	%rax,%rax		# cf -> mask
-	and	\$38,%rax
+	lea	38($acc0),%rax
+	cmovc	%rax,$acc0		# %cf ? $acc0+38 : $acc0
 
-	add	%rax,$acc0
 	mov	$acc1,8*1(%rdi)
 	mov	$acc2,8*2(%rdi)
 	mov	$acc3,8*3(%rdi)
@@ -753,26 +751,25 @@ x25519_fe64_add:
 	mov	8*1(%rsi),$acc1
 	mov	8*2(%rsi),$acc2
 	mov	8*3(%rsi),$acc3
+	xor	%eax,%eax
+	mov	\$38,%esi
 
 	add	8*0(%rdx),$acc0
 	adc	8*1(%rdx),$acc1
 	adc	8*2(%rdx),$acc2
 	adc	8*3(%rdx),$acc3
 
-	sbb	%rax,%rax		# cf -> mask
-	and	\$38,%rax
+	cmovc	%esi,%eax		# %cf ? 38 : 0
 
 	add	%rax,$acc0
 	adc	\$0,$acc1
+	lea	38($acc0),%rax
 	adc	\$0,$acc2
 	mov	$acc1,8*1(%rdi)
 	adc	\$0,$acc3
 	mov	$acc2,8*2(%rdi)
-	sbb	%rax,%rax		# cf -> mask
+	cmovc	%rax,$acc0		# %cf ? $acc0+38 : $acc0
 	mov	$acc3,8*3(%rdi)
-	and	\$38,%rax
-
-	add	%rax,$acc0
 	mov	$acc0,8*0(%rdi)
 
 .Lfe64_add_epilogue:
@@ -788,26 +785,25 @@ x25519_fe64_sub:
 	mov	8*1(%rsi),$acc1
 	mov	8*2(%rsi),$acc2
 	mov	8*3(%rsi),$acc3
+	xor	%eax,%eax
+	mov	\$38,%esi
 
 	sub	8*0(%rdx),$acc0
 	sbb	8*1(%rdx),$acc1
 	sbb	8*2(%rdx),$acc2
 	sbb	8*3(%rdx),$acc3
 
-	sbb	%rax,%rax		# cf -> mask
-	and	\$38,%rax
+	cmovc	%esi,%eax		# %cf ? 38 : 0
 
 	sub	%rax,$acc0
 	sbb	\$0,$acc1
+	lea	-38($acc0),%rax
 	sbb	\$0,$acc2
 	mov	$acc1,8*1(%rdi)
 	sbb	\$0,$acc3
 	mov	$acc2,8*2(%rdi)
-	sbb	%rax,%rax		# cf -> mask
+	cmovc	%rax,$acc0		# %cf ? $acc0-38 : $acc0
 	mov	$acc3,8*3(%rdi)
-	and	\$38,%rax
-
-	sub	%rax,$acc0
 	mov	$acc0,8*0(%rdi)
 
 .Lfe64_sub_epilogue:
