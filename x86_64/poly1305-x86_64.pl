@@ -68,26 +68,33 @@ $0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
 ( $xlate="${dir}../../perlasm/x86_64-xlate.pl" and -f $xlate) or
 die "can't locate x86_64-xlate.pl";
 
-if (`$ENV{CC} -Wa,-v -c -o /dev/null -x assembler /dev/null 2>&1`
-		=~ /GNU assembler version ([2-9]\.[0-9]+)/) {
-	$avx = ($1>=2.19) + ($1>=2.22) + ($1>=2.25) + ($1>=2.26);
-}
+$avx=undef;
 
-if (!$avx && $win64 && ($flavour =~ /nasm/ || $ENV{ASM} =~ /nasm/) &&
-	   ($ENV{ASM} = $ENV{ASM} // "nasm") &&
-	   `"$ENV{ASM}" -v 2>&1` =~ /NASM version ([2-9]\.[0-9]+)(?:\.([0-9]+))?/) {
+if (!defined($avx) && $win64 && ($flavour =~ /nasm/ || $ENV{ASM} =~ /nasm/) &&
+	   ($ENV{ASM} //= "nasm") &&
+	   `"$ENV{ASM}" -v 2>&1` =~ /NASM version ([0-9]+\.[0-9]+)(?:\.([0-9]+))?/) {
 	$avx = ($1>=2.09) + ($1>=2.10) + 2 * ($1>=2.12);
 	$avx += 2 if ($1==2.11 && $2>=8);
 }
 
-if (!$avx && $win64 && ($flavour =~ /masm/ || $ENV{ASM} =~ /ml64/) &&
-	   ($ENV{ASM} = $ENV{ASM} // "ml64") &&
+if (!defined($avx) && $win64 && ($flavour =~ /masm/ || $ENV{ASM} =~ /ml64/) &&
+	   ($ENV{ASM} //= "ml64") &&
 	   `"$ENV{ASM}" 2>&1` =~ /Version ([0-9]+)\./) {
 	$avx = ($1>=10) + ($1>=12) + 2 * ($1>=14);
 }
 
-if (!$avx && `$ENV{CC} -v 2>&1` =~ /((?:^clang|LLVM) version|.*based on LLVM) ([3-9]\.[0-9]+)/) {
-	$avx = ($2>=3.0) + ($2>3.0);
+$ENV{CC} //= "cc";
+if (!defined($avx) && `$ENV{CC} -Wa,-v -c -o /dev/zero -x assembler /dev/null 2>&1`
+		=~ /GNU assembler version ([0-9]+)\.([0-9]+)/) {
+	my $ver = $1 + $2/100.0;	# 3.1->3.01, 3.10->3.10
+	$avx = ($ver>=2.19) + ($ver>=2.22) + ($ver>=2.25) + ($ver>=2.26);
+}
+
+if (!defined($avx) && `$ENV{CC} -v 2>&1`
+		=~ /((?:^clang|LLVM) version|.*based on LLVM) ([0-9]+)\.([0-9]+)/) {
+	my $ver = $2 + $3/100.0;	# 3.1->3.01, 3.10->3.10
+	$avx = ($ver>=3.0) + ($ver>3.0);
+	$avx += 2*($ver>=7.0) if ($1 =~ /^clang/);
 }
 
 open OUT,"| \"$^X\" \"$xlate\" $flavour \"$output\"";
