@@ -25,7 +25,7 @@ my $in_proc;	# used with 'windows' flavour
 ################################################################
 # directives which need special treatment on different platforms
 ################################################################
-my $arch = sub { } if ($flavour !~ /linux|coff/);  # omit .arch
+my $arch = sub { } if ($flavour !~ /linux|coff64/);# omit .arch
 my $fpu  = sub { } if ($flavour !~ /linux/);       # omit .fpu
 
 my $rodata = sub {
@@ -152,6 +152,9 @@ my $asciz = sub {
 my $align = sub {
     "\tALIGN\t".2**@_[0];
 } if ($flavour =~ /win/);
+my $align = sub {
+    ".p2align\t".@_[0];
+} if ($flavour =~ /coff/);
 
 my $byte = sub {
     "\tDCB\t".join(',',@_);
@@ -221,7 +224,9 @@ my $rva = sub {
 } if ($flavour =~ /win(?!64)/);
 
 ################################################################
-# some broken instructions in Visual Studio armasm64...
+# some broken instructions in Visual Studio armasm[64]...
+
+my $it = sub {} if ($flavour =~ /win32/);	# omit 'it'
 
 my $ext = sub {
     "\text8\t".join(',',@_);
