@@ -273,11 +273,7 @@ my %globals;
 
 	# Some assemblers insist on signed presentation of 32-bit
 	# offsets, but sign extension is a tricky business in perl...
-	if ((1<<31)<<1) {
-	    $self->{label} =~ s/\b([0-9]+)\b/$1<<32>>32/eg;
-	} else {
-	    $self->{label} =~ s/\b([0-9]+)\b/$1>>0/eg;
-	}
+	$self->{label} =~ s/\b([0-9]+)\b/unpack("l",pack("L",$1))/eg;
 
 	# if base register is %rbp or %r13, see if it's possible to
 	# flip base and index registers [for better performance]
