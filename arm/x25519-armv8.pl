@@ -18,6 +18,7 @@
 # X-Gene	+21%
 # Denver	+12%
 # Mongoose	+23%
+# ThunderX2	+22%
 #
 # (*)	unlike on other processors, base 2^51 is not actually faster
 #	than base 2^25.5 on Cortex-A57, it's ~15% slower, so that

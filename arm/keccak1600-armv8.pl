@@ -40,6 +40,7 @@
 #
 # Cortex-A53	13
 # Cortex-A57	12
+# Cortex-A76	7.9
 # X-Gene	14
 # Mongoose	10
 # Kryo		12
