@@ -47,8 +47,9 @@
 #    modes.
 #
 # 8. In order to provide for structured exception handling unified
-#    Win64 prologue copies %rsp value to %rax. For further details
-#    see SEH paragraph at the end.
+#    Win64 prologue copies %rsp value to %rax. [Unless function is
+#    tagged with additional .type tag.] For further details see SEH
+#    paragraph at the end.
 # 9. .init segment is allowed to contain calls to functions only.
 # a. If function accepts more than 4 arguments *and* >4th argument
 #    is declared as non 64-bit value, do clear its upper part.
@@ -143,7 +144,8 @@ my %globals;
 		"$self->{op}";
 	    } elsif ($self->{op} eq "ret") {
 		my $epilogue = "";
-		if ($win64 && $current_function->{abi} eq "svr4") {
+		if ($win64 && $current_function->{abi} eq "svr4"
+			   && !$current_function->{unwind}) {
 		    $epilogue = "movq	8(%rsp),%rdi\n\t" .
 				"movq	16(%rsp),%rsi\n\t";
 		}
@@ -157,7 +159,8 @@ my %globals;
 	    $self->{op} =~ s/^movz/movzx/;
 	    if ($self->{op} eq "ret") {
 		$self->{op} = "";
-		if ($win64 && $current_function->{abi} eq "svr4") {
+		if ($win64 && $current_function->{abi} eq "svr4"
+			   && !$current_function->{unwind}) {
 		    $self->{op} = "mov	rdi,QWORD$PTR\[8+rsp\]\t;WIN64 epilogue\n\t".
 				  "mov	rsi,QWORD$PTR\[16+rsp\]\n\t";
 	    	}
@@ -390,11 +393,12 @@ my %globals;
 	if ($gas) {
 	    my $func = ($globals{$self->{value}} or $self->{value}) . ":";
 	    if ($current_function->{name} eq $self->{value}) {
+	        my $fp = $current_function->{unwind} ? "%r11" : "%rax";
 		$func .= "\n	.byte	0xf3,0x0f,0x1e,0xfa\n";	# endbranch
 		if ($win64 && $current_function->{abi} eq "svr4") {
 		    $func .= "	movq	%rdi,8(%rsp)\n";
 		    $func .= "	movq	%rsi,16(%rsp)\n";
-		    $func .= "	movq	%rsp,%rax\n";
+		    $func .= "	movq	%rsp,$fp\n";
 		    $func .= "${decor}SEH_begin_$current_function->{name}:\n";
 		    my $narg = $current_function->{narg};
 		    $narg=6 if (!defined($narg));
@@ -415,10 +419,11 @@ my %globals;
 	    my $func =	"$current_function->{name}" .
 			($nasm ? ":" : "\tPROC $current_function->{scope}") .
 			"\n";
+	    my $fp = $current_function->{unwind} ? "r11" : "rax";
 	    $func .= "	DB	243,15,30,250\n";	# endbranch
 	    $func .= "	mov	QWORD$PTR\[8+rsp\],rdi\t;WIN64 prologue\n";
 	    $func .= "	mov	QWORD$PTR\[16+rsp\],rsi\n";
-	    $func .= "	mov	rax,rsp\n";
+	    $func .= "	mov	$fp,rsp\n";
 	    $func .= "${decor}SEH_begin_$current_function->{name}:";
 	    $func .= ":" if ($masm);
 	    $func .= "\n";
@@ -462,6 +467,10 @@ my %globals;
 	$self->{value};
     }
 }
+
+my @xdata_seg = (".section	.xdata", ".align	8");
+my @pdata_seg = (".section	.pdata", ".align	4");
+
 { package cfi_directive;
     # CFI directives annotate instructions that are significant for
     # stack unwinding procedure compliant with DWARF specification,
@@ -495,6 +504,19 @@ my %globals;
     # as reference to top of caller's stack, and on x86_64 call to
     # subroutine pushes 8-byte return address. In other words original
     # stack pointer upon entry to a subroutine is 8 bytes off from CFA.
+    #
+    # In addition the .cfi directives are re-purposed even for Win64
+    # stack unwinding. Two more synthetic directives were added:
+    #
+    # - .cfi_end_prologue to denote point when all non-volatile
+    #   registers are saved and stack or [chosen] frame pointer is
+    #   stable;
+    # - .cfi_epilogue to denote point when all non-volatile registers
+    #   are restored [and it even adds missing .cfi_restore-s];
+    #
+    # Though it's not universal "miracle cure," it has its limitations.
+    # Most notably .cfi_cfa_expression won't start working... For more
+    # information see the end of this file.
 
     # Below constants are taken from "DWARF Expressions" section of the
     # DWARF specification, section is numbered 7.7 in versions 3 and 4.
@@ -536,7 +558,7 @@ my %globals;
 	"%r12"=>12, "%r13"=>13, "%r14"=>14, "%r15"=>15
 	);
 
-    my ($cfa_reg, $cfa_rsp);
+    my ($cfa_reg, $cfa_rsp, $cfa_off, %saved_regs);
     my @cfa_stack;
 
     # [us]leb128 format is variable-length integer representation base
@@ -628,6 +650,94 @@ my %globals;
 	# length of the expression and of course the expression itself.
 	return (15,scalar(@ret),@ret);
     }
+
+    # Following constants are defined in "x64 exception handling" at
+    # https://docs.microsoft.com/ and match the register sequence in
+    # CONTEXT structure defined in winnt.h.
+    my %WIN64_reg_idx = (
+	"%rax"=>0,  "%rcx"=>1,  "%rdx"=>2,  "%rbx"=>3,
+	"%rsp"=>4,  "%rbp"=>5,  "%rsi"=>6,  "%rdi"=>7,
+	"%r8" =>8,  "%r9" =>9,  "%r10"=>10, "%r11"=>11,
+	"%r12"=>12, "%r13"=>13, "%r14"=>14, "%r15"=>15
+	);
+    sub xdata {
+	our @dat = ();
+	our $len = 0;
+
+	sub allocstack {
+	    my $offset = shift;
+
+	    if ($offset) {
+		if ($offset <= 128) {
+	            $offset = ($offset - 8) >> 3;
+		    push @dat, [0,$offset<<4|2];	# UWOP_ALLOC_SMALL
+		} elsif ($offset < 0x80000) {
+		    push @dat, [0,0x01,unpack("C2",pack("v",$offset>>3))];
+		} else {
+		    push @dat, [0,0x11,unpack("C4",pack("V",$offset))];
+		}
+		$len += $#{@dat[-1]}+1;
+	    }
+	}
+
+	# allocate stack frame
+	if (my $offset = -8 - $cfa_rsp) {
+	    # but see if frame pointer is among saved registers
+	    if ($cfa_reg ne "%rsp" and my $fp_off = $saved_regs{$cfa_reg}) {
+	        $fp_off = -8 - $fp_off;
+		allocstack($fp_off-8);
+		$offset -= $fp_off;
+		push @dat, [0,$WIN64_reg_idx{$cfa_reg}<<4]; # UWOP_PUSH_NONVOL
+		$len += $#{@dat[-1]}+1;
+	    }
+	    allocstack($offset);
+	}
+	# save registers
+	foreach my $key (sort { $saved_regs{$b} <=> $saved_regs{$a} }
+			      keys(%saved_regs)) {
+	    next if ($cfa_reg ne "%rsp" && $cfa_reg eq $key);
+	    my $offset = $saved_regs{$key} - $cfa_rsp;
+	    if ($key =~ /%xmm([0-9]+)/) {
+		if ($offset < 0x100000) {
+		    push @dat, [0,($1<<4)|8,unpack("C2",pack("v",$offset>>4))];
+		} else {
+		    push @dat, [0,($1<<4)|9,unpack("C4",pack("V",$offset))];
+		}
+	    } else {
+		if ($offset < 0x80000) {
+		    push @dat, [0,(($WIN64_reg_idx{$key})<<4)|4,
+				unpack("C2",pack("v",$offset>>3))];
+		} else {
+		    push @dat, [0,(($WIN64_reg_idx{$key})<<4)|5,
+				unpack("C4",pack("V",$offset))];
+		}
+	    }
+	    $len += $#{@dat[-1]}+1;
+	}
+	# set up frame pointer
+	my $fp_info = 0;
+	if ($cfa_reg ne "%rsp") {
+	    my $offset = $cfa_off - $cfa_rsp;
+	    ($offset > 240 or $offset&0xf) and die "invalid FP offset $offset";
+	    $fp_info = ($offset&-16)|$WIN64_reg_idx{$cfa_reg};
+	    push @dat, [0,3];				# UWOP_SET_FPREG
+	    $len += $#{@dat[-1]}+1;
+	}
+
+	my @ret;
+	# generate 4-byte descriptor
+	push @ret, ".byte	1,0,".($len/2).",$fp_info";
+	$len += 4;
+	# pad to 8*n
+	unshift @dat, [(0)x((-$len)&7)] if ($len&7);
+	# emit data
+	while(defined(my $row = pop @dat)) {
+	    push @ret, ".byte	". join(",",
+					map { sprintf "0x%02x",$_ } @{$row});
+	}
+
+	return @ret;
+    }
     sub re {
 	my	($class, $line) = @_;
 	my	$self = {};
@@ -644,8 +754,14 @@ my %globals;
 	    # value and current CFA, Canonical Frame Address, which is
 	    # why it starts with -8. Recall that CFA is top of caller's
 	    # stack...
-	    /startproc/	&& do {	($cfa_reg, $cfa_rsp) = ("%rsp", -8); last; };
-	    /endproc/	&& do {	($cfa_reg, $cfa_rsp) = ("%rsp",  0);
+	    /startproc/	&& do {	($cfa_reg, $cfa_rsp, $cfa_off) =
+				("%rsp",   -8,       -8);
+				%saved_regs = ();
+				last;
+			      };
+	    /endproc/	&& do {	($cfa_reg, $cfa_rsp, $cfa_off) =
+				("%rsp",   0,        0);
+				%saved_regs = ();
 				# .cfi_remember_state directives that are not
 				# matched with .cfi_restore_state are
 				# unnecessary.
@@ -653,35 +769,48 @@ my %globals;
 				last;
 			      };
 	    /def_cfa_register/
-			&& do {	$cfa_reg = $$line; last; };
+			&& do {	$cfa_off = $cfa_rsp if ($cfa_reg eq "%rsp");
+				$cfa_reg = $$line;
+				last;
+			      };
 	    /def_cfa_offset/
-			&& do {	$cfa_rsp = -1*eval($$line) if ($cfa_reg eq "%rsp");
+			&& do {	$cfa_off = -1*eval($$line);
+				$cfa_rsp = $cfa_off if ($cfa_reg eq "%rsp");
 				last;
 			      };
 	    /adjust_cfa_offset/
-			&& do {	$cfa_rsp -= 1*eval($$line) if ($cfa_reg eq "%rsp");
+			&& do { my $val = 1*eval($$line);
+				$cfa_off -= $val;
+				if ($cfa_reg eq "%rsp") {
+				    $cfa_rsp -= $val;
+				}
 				last;
 			      };
 	    /def_cfa/	&& do {	if ($$line =~ /(%r\w+)\s*,\s*(.+)/) {
 				    $cfa_reg = $1;
-				    $cfa_rsp = -1*eval($2) if ($cfa_reg eq "%rsp");
+				    $cfa_off = -1*eval($2);
+				    $cfa_rsp = $cfa_off if ($cfa_reg eq "%rsp");
 				}
 				last;
 			      };
 	    /push/	&& do {	$dir = undef;
 				$cfa_rsp -= 8;
 				if ($cfa_reg eq "%rsp") {
+				    $cfa_off = $cfa_rsp;
 				    $self->{value} = ".cfi_adjust_cfa_offset\t8\n";
 				}
+				$saved_regs{$$line} = $cfa_rsp;
 				$self->{value} .= ".cfi_offset\t$$line,$cfa_rsp";
 				last;
 			      };
 	    /pop/	&& do {	$dir = undef;
 				$cfa_rsp += 8;
 				if ($cfa_reg eq "%rsp") {
+				    $cfa_off = $cfa_rsp;
 				    $self->{value} = ".cfi_adjust_cfa_offset\t-8\n";
 				}
 				$self->{value} .= ".cfi_restore\t$$line";
+				delete $saved_regs{$$line};
 				last;
 			      };
 	    /cfa_expression/
@@ -692,11 +821,34 @@ my %globals;
 				last;
 			      };
 	    /remember_state/
-			&& do {	push @cfa_stack, [$cfa_reg, $cfa_rsp];
+			&& do {	push @cfa_stack,
+				     [$cfa_reg,$cfa_rsp,$cfa_off,%saved_regs];
 				last;
 			      };
 	    /restore_state/
-			&& do {	($cfa_reg, $cfa_rsp) = @{pop @cfa_stack};
+			&& do {	($cfa_reg,$cfa_rsp,$cfa_off,%saved_regs)
+				    = @{pop @cfa_stack};
+				last;
+			      };
+	    /offset/	&& do { if ($$line =~ /(%\w+)\s*,\s*(.+)/) {
+				    $saved_regs{$1} = 1*eval($2);
+				    $dir = undef if ($1 =~ /%xmm/);
+				}
+				last;
+			      };
+	    /restore/	&& do {	delete $saved_regs{$$line}; last; };
+	    /end_prologue/
+			&& do {	$dir = undef;
+				$self->{win64} = ".endprolog";
+				last;
+			      };
+	    /epilogue/
+			&& do {	$dir = undef;
+				$self->{win64} = ".epilogue";
+				$self->{value} = join("\n",
+						      map { ".cfi_restore\t$_" }
+						      sort keys(%saved_regs));
+				%saved_regs = ();
 				last;
 			      };
 	    }
@@ -710,7 +862,61 @@ my %globals;
     }
     sub out {
 	my $self = shift;
-	return ($elf ? $self->{value} : undef);
+	return $self->{value} if ($elf);
+
+	if ($win64 and $current_function->{unwind}
+		   and my $ret = $self->{win64}) {
+	    my ($reg, $off) = ($cfa_reg =~ /%(?!rsp)/)  ? ($',    $cfa_off)
+							: ("rsp", $cfa_rsp);
+	    my $fname = $current_function->{name};
+
+	    if ($ret eq ".endprolog") {
+		$saved_regs{"%rdi"} = 0;	# relative to CFA, remember?
+		$saved_regs{"%rsi"} = 8;
+
+		push @pdata_seg,
+		    ".rva	.LSEH_begin_${fname}",
+		    ".rva	.LSEH_body_${fname}",
+		    ".rva	.LSEH_info_${fname}_prologue","";
+		push @xdata_seg,
+		    ".LSEH_info_${fname}_prologue:",
+		    ".byte	1,0,5,0x0b",	# 5 unwind codes, %r11 is FP
+		    ".byte	0,0x03",	# set frame pointer
+		    ".byte	0,0x74,1,0",	# %rdi at 8(%rsp)
+		    ".byte	0,0x64,2,0",	# %rsi at 16(%rsp)
+		    ".byte	0,0"		# padding
+		    ;
+		push @pdata_seg,
+		    ".rva	.LSEH_body_${fname}",
+		    ".rva	.LSEH_epilogue_${fname}",
+		    ".rva	.LSEH_info_${fname}_body","";
+		push @xdata_seg,".LSEH_info_${fname}_body:", xdata();
+		$ret  = "${decor}SEH_body_${fname}:";
+		$ret .= ":" if ($masm); $ret .= "\n";
+	    } elsif ($ret eq ".epilogue") {
+		%saved_regs = ();
+		$saved_regs{"%rdi"} = 0;	# relative to CFA, remember?
+		$saved_regs{"%rsi"} = 8;
+		$cfa_rsp = $cfa_off;
+
+		push @pdata_seg,
+		    ".rva	.LSEH_epilogue_${fname}",
+		    ".rva	.LSEH_end_${fname}",
+		    ".rva	.LSEH_info_${fname}_epilogue","";
+		push @xdata_seg,".LSEH_info_${fname}_epilogue:", xdata(), "";
+		$ret  = "${decor}SEH_epilogue_${fname}:";
+		$ret .= ":" if ($masm); $ret .= "\n";
+		if ($gas) {
+		    $ret .= "	mov	".(0-$off)."(%$reg),%rdi\n";
+		    $ret .= "	mov	".(8-$off)."(%$reg),%rsi\n";
+		} else {
+		    $ret .= "	mov	rdi,QWORD$PTR\[".(0-$off)."+$reg\]";
+		    $ret .= "	;WIN64 epilogue\n";
+		    $ret .= "	mov	rsi,QWORD$PTR\[".(8-$off)."+$reg\]\n";
+		}
+	    }
+	    return $ret;
+	}
     }
 }
 { package directive;	# pick up directives, which start with .
@@ -736,13 +942,14 @@ my %globals;
 				    $$line = $globals{$$line} if ($prefix);
 				    last;
 				  };
-		/\.type/    && do { my ($sym,$type,$narg) = split(',',$$line);
+		/\.type/    && do { my ($sym,$type,$narg,$unwind) = split(',',$$line);
 				    if ($type eq "\@function") {
 					undef $current_function;
 					$current_function->{name} = $sym;
 					$current_function->{abi}  = "svr4";
 					$current_function->{narg} = $narg;
 					$current_function->{scope} = defined($globals{$sym})?"PUBLIC":"PRIVATE";
+					$current_function->{unwind} = $unwind;
 				    } elsif ($type eq "\@abi-omnipotent") {
 					undef $current_function;
 					$current_function->{name} = $sym;
@@ -1122,6 +1329,10 @@ my $vprotq = sub {
 
 # Intel Control-flow Enforcement Technology extension. All functions and
 # indirect branch targets will have to start with this instruction...
+# However, it should not be used in functions' prologues explicitly, as
+# it's added automatically [and in the right spot]. Which leaves only
+# non-function indirect branch targets, such as in a case-like dispatch
+# table, as application area.
 
 my $endbr64 = sub {
     (0xf3,0x0f,0x1e,0xfa);
@@ -1141,7 +1352,9 @@ ___
 OPTION	DOTNAME
 ___
 }
-while(defined(my $line=<>)) {
+
+sub process {
+    my $line = shift;
 
     $line =~ s|\R$||;           # Better chomp
 
@@ -1208,6 +1421,11 @@ while(defined(my $line=<>)) {
 
     print $line,"\n";
 }
+
+while(<>) { process($_); }
+
+map { process($_) } @pdata_seg if ($win64);
+map { process($_) } @xdata_seg if ($win64);
 
 # platform-specific epilogue
 if ($masm) {
@@ -1454,3 +1672,89 @@ close STDOUT;
 #	Unix. "Unlike" refers to the fact that on Unix signal handler
 #	will always be invoked, core dumped and appropriate exit code
 #	returned to parent (for user notification).
+#
+########################################################################
+# As of May 2020 an alternative approach that works with both exceptions
+# and debugging/profiling was implemented by re-purposing DWARF .cfi
+# annotations even for Win64 unwind tables' generation. Unfortunately,
+# but not really unexpectedly, it imposes additional limitations on
+# coding style. Probably most significant limitation is that frame
+# pointer has to be at 16*n distance from stack pointer at the exit
+# from prologue. But first things first. There are two additional
+# synthetic .cfi directives, .cfi_end_prologue and .cfi_epilogue,
+# that need to be added to all functions marked with additional .type
+# tag (see example below). There are "do's and don'ts" for prologue
+# and epilogue. It shouldn't come as surprise that in prologue one may
+# not modify non-volatile registers, but one may not modify %r11 either.
+# This is because it's used as temporary frame pointer(*). There is one
+# exception to this rule, and it's setting up frame pointer that is
+# non-volatile or %r11. But it must be last instruction in the prologue.
+# Constraints for epilogue, or rather on its boundary, depend on whether
+# the frame is fixed- or variable-length. In fixed-frame subroutine
+# stack pointer has to be restored in the last instruction prior the
+# .cfi_epilogue directive. If it's variable-frame subroutine, and a
+# non-volatile register was used as frame pointer, then last instruction
+# prior the directive has to restore its original value. This means that
+# final stack pointer adjustment would have to be pushed past the
+# directive. Normally this would render the epilogue non-unwindable, so
+# special care has to be taken. To resolve the dilemma, copy frame
+# pointer to a volatile register in advance. To give an example:
+#
+# .type	rbp_as_frame_pointer,\@function,3,"unwind"  # mind extra tag!
+# rbp_as_frame_pointer:
+# .cfi_startproc
+#	push	%rbp
+# .cfi_push	%rbp
+#	push	%rbx
+# .cfi_push	%rbx
+# 	mov	%rsp,%rbp	# last instruction in prologue
+# .cfi_def_cfa_register	%rbp	# %rsp-%rbp has to be 16*n, e.g. 16*0
+# .cfi_end_prologue
+#	sub	\$40,%rsp
+#	and	\$-64,%rsp
+#	...
+#	mov	%rbp,%r11
+# .cfi_def_cfa_register	%r11	# copy frame pointer to volatile %r11
+#	mov	0(%rbp),%rbx
+#	mov	8(%rbp),%rbp	# last instruction prior epilogue
+# .cfi_epilogue			# may not change %r11 in epilogue
+#	lea	16(%r11),%rsp
+#	ret
+# .cfi_endproc
+# .size	rbp_as_frame_pointer,.-rbp_as_frame_pointer
+#
+# To give an example of fixed-frame subroutine for reference:
+#
+# .type	fixed_frame,\@function,3,"unwind"           # mind extra tag!
+# fixed_frame:
+# .cfi_startproc
+#	push	%rbp
+# .cfi_push	%rbp
+#	push	%rbx
+# .cfi_push	%rbx
+#	sub	\$40,%rsp
+# .cfi_adjust_cfa_offset 40
+# .cfi_end_prologue
+#	...
+#	mov	40(%rsp),%rbx
+#	mov	48(%rsp),%rbp
+#	lea	56(%rsp),%rsp
+# .cfi_adjust_cfa_offset -56
+# .cfi_epilogue
+#	ret
+# .cfi_endproc
+# .size	fixed_frame,.-fixed_frame
+#
+# As for epilogue itself, one can only work on non-volatile registers.
+# "Non-volatile" in "Windows" sense, i.e. minus %rdi and %rsi.
+#
+# On a final note, mixing old-style and modernized subroutines in the
+# same file takes some trickery. Ones of the new kind have to appear
+# after old-style ones. This has everything to do with the fact that
+# entries in the .pdata segment have to appear in strictly same order
+# as corresponding subroutines, and auto-generated RUNTIME_FUNCTION
+# structures get mechanically appended to whatever existing .pdata.
+#
+# (*)	Just in case, why %r11 and not %rax. This has everything to do
+#	with the way UNWIND_INFO is, one just can't designate %rax as
+#	frame pointer.
