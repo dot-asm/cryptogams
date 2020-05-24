@@ -66,6 +66,7 @@ open STDOUT,">$output" || die "can't open $output: $!"
 
 my $gas=1;	$gas=0 if ($output =~ /\.asm$/);
 my $elf=1;	$elf=0 if (!$gas);
+my $dwarf=$elf;
 my $win64=0;
 my $prefix="";
 my $decor=".L";
@@ -94,6 +95,8 @@ elsif (!$gas)
     $elf=0;
     $decor="\$L\$";
 }
+
+$dwarf=0 if($win64);
 
 my $current_segment;
 my $current_function;
@@ -861,7 +864,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
     }
     sub out {
 	my $self = shift;
-	return $self->{value} if ($elf);
+	return $self->{value} if ($dwarf);
 
 	if ($win64 and $current_function->{unwind}
 		   and my $ret = $self->{win64}) {
@@ -916,6 +919,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	    }
 	    return $ret;
 	}
+	return;
     }
 }
 { package directive;	# pick up directives, which start with .
