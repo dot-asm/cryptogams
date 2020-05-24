@@ -558,7 +558,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	"%r12"=>12, "%r13"=>13, "%r14"=>14, "%r15"=>15
 	);
 
-    my ($cfa_reg, $cfa_rsp, $cfa_off, %saved_regs);
+    my ($cfa_reg, $cfa_off, $cfa_rsp, %saved_regs);
     my @cfa_stack;
 
     # [us]leb128 format is variable-length integer representation base
@@ -754,12 +754,12 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	    # value and current CFA, Canonical Frame Address, which is
 	    # why it starts with -8. Recall that CFA is top of caller's
 	    # stack...
-	    /startproc/	&& do {	($cfa_reg, $cfa_rsp, $cfa_off) =
+	    /startproc/	&& do {	($cfa_reg, $cfa_off, $cfa_rsp) =
 				("%rsp",   -8,       -8);
 				%saved_regs = ();
 				last;
 			      };
-	    /endproc/	&& do {	($cfa_reg, $cfa_rsp, $cfa_off) =
+	    /endproc/	&& do {	($cfa_reg, $cfa_off, $cfa_rsp) =
 				("%rsp",   0,        0);
 				%saved_regs = ();
 				# .cfi_remember_state directives that are not
@@ -822,12 +822,12 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 			      };
 	    /remember_state/
 			&& do {	push @cfa_stack,
-				     [$cfa_reg,$cfa_rsp,$cfa_off,%saved_regs];
+				     [$cfa_reg,$cfa_off,$cfa_rsp,%saved_regs];
 				last;
 			      };
 	    /restore_state/
-			&& do {	($cfa_reg,$cfa_rsp,$cfa_off,%saved_regs)
-				    = @{pop @cfa_stack};
+			&& do {	     ($cfa_reg,$cfa_off,$cfa_rsp,%saved_regs)
+				= @{pop @cfa_stack};
 				last;
 			      };
 	    /offset/	&& do { if ($$line =~ /(%\w+)\s*,\s*(.+)/) {
@@ -842,8 +842,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 				$self->{win64} = ".endprolog";
 				last;
 			      };
-	    /epilogue/
-			&& do {	$dir = undef;
+	    /epilogue/	&& do {	$dir = undef;
 				$self->{win64} = ".epilogue";
 				$self->{value} = join("\n",
 						      map { ".cfi_restore\t$_" }
