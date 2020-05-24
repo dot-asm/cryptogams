@@ -1432,13 +1432,15 @@ if ($masm) {
     print "END\n";
 } elsif ($elf) {
     # -fcf-protection segment, snatched from compiler -S output
+    my $align = ($flavour =~ /elf32/) ? 4 : 8;
     print <<___;
 
 .section	.note.gnu.property,"a",\@note
-.align	8
-.long	4,16,5
-.byte	0x47,0x4E,0x55,0
-.long	0xc0000002,4,3,0
+	.long	4,2f-1f,5
+	.byte	0x47,0x4E,0x55,0
+1:	.long	0xc0000002,4,3
+.align	$align
+2:
 ___
 }
 
