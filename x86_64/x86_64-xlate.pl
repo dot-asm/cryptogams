@@ -396,9 +396,10 @@ my %globals;
 	if ($gas) {
 	    my $func = ($globals{$self->{value}} or $self->{value}) . ":";
 	    if ($current_function->{name} eq $self->{value}) {
-	        my $fp = $current_function->{unwind} ? "%r11" : "%rax";
+		$func .= "\n.cfi_".cfi_directive::startproc()   if ($dwarf);
 		$func .= "\n	.byte	0xf3,0x0f,0x1e,0xfa\n";	# endbranch
 		if ($win64 && $current_function->{abi} eq "svr4") {
+		    my $fp = $current_function->{unwind} ? "%r11" : "%rax";
 		    $func .= "	movq	%rdi,8(%rsp)\n";
 		    $func .= "	movq	%rsi,16(%rsp)\n";
 		    $func .= "	movq	%rsp,$fp\n";
@@ -695,6 +696,15 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	    }
 	    allocstack($offset);
 	}
+	# set up frame pointer
+	my $fp_info = 0;
+	if ($cfa_reg ne "%rsp") {
+	    my $offset = $cfa_off - $cfa_rsp;
+	    ($offset > 240 or $offset&0xf) and die "invalid FP offset $offset";
+	    $fp_info = ($offset&-16)|$WIN64_reg_idx{$cfa_reg};
+	    push @dat, [0,3];				# UWOP_SET_FPREG
+	    $len += $#{@dat[-1]}+1;
+	}
 	# save registers
 	foreach my $key (sort { $saved_regs{$b} <=> $saved_regs{$a} }
 			      keys(%saved_regs)) {
@@ -717,15 +727,6 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	    }
 	    $len += $#{@dat[-1]}+1;
 	}
-	# set up frame pointer
-	my $fp_info = 0;
-	if ($cfa_reg ne "%rsp") {
-	    my $offset = $cfa_off - $cfa_rsp;
-	    ($offset > 240 or $offset&0xf) and die "invalid FP offset $offset";
-	    $fp_info = ($offset&-16)|$WIN64_reg_idx{$cfa_reg};
-	    push @dat, [0,3];				# UWOP_SET_FPREG
-	    $len += $#{@dat[-1]}+1;
-	}
 
 	my @ret;
 	# generate 4-byte descriptor
@@ -740,6 +741,18 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	}
 
 	return @ret;
+    }
+    sub startproc {
+	return if ($cfa_rsp == -8);
+	($cfa_reg, $cfa_off, $cfa_rsp) = ("%rsp", -8, -8);
+	%saved_regs = ();
+	return "startproc";
+    }
+    sub endproc {
+	return if ($cfa_rsp == 0);
+	($cfa_reg, $cfa_off, $cfa_rsp) = ("%rsp", 0, 0);
+	%saved_regs = ();
+	return "endproc";
     }
     sub re {
 	my	($class, $line) = @_;
@@ -757,14 +770,8 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	    # value and current CFA, Canonical Frame Address, which is
 	    # why it starts with -8. Recall that CFA is top of caller's
 	    # stack...
-	    /startproc/	&& do {	($cfa_reg, $cfa_off, $cfa_rsp) =
-				("%rsp",   -8,       -8);
-				%saved_regs = ();
-				last;
-			      };
-	    /endproc/	&& do {	($cfa_reg, $cfa_off, $cfa_rsp) =
-				("%rsp",   0,        0);
-				%saved_regs = ();
+	    /startproc/	&& do {	$dir = startproc(); last; };
+	    /endproc/	&& do {	$dir = endproc();
 				# .cfi_remember_state directives that are not
 				# matched with .cfi_restore_state are
 				# unnecessary.
@@ -883,9 +890,9 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 		push @xdata_seg,
 		    ".LSEH_info_${fname}_prologue:",
 		    ".byte	1,0,5,0x0b",	# 5 unwind codes, %r11 is FP
-		    ".byte	0,0x03",	# set frame pointer
 		    ".byte	0,0x74,1,0",	# %rdi at 8(%rsp)
 		    ".byte	0,0x64,2,0",	# %rsi at 16(%rsp)
+		    ".byte	0,0x03",	# set frame pointer
 		    ".byte	0,0"		# padding
 		    ;
 		push @pdata_seg,
@@ -986,9 +993,11 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 				(defined($globals{$1})?".scl 2;":".scl 3;") .
 				"\t.type 32;\t.endef"
 				if ($win64 && $$line =~ /([^,]+),\@function/);
-		} elsif (!$elf && $dir =~ /\.size/) {
-		    $self->{value} = "";
-		    if (defined($current_function)) {
+		} elsif ($dir =~ /\.size/) {
+		    $self->{value} = "" if (!$elf);
+		    if ($dwarf and my $endproc = cfi_directive::endproc()) {
+			$self->{value} = ".cfi_$endproc\n$self->{value}";
+		    } elsif (!$elf && defined($current_function)) {
 			$self->{value} .= "${decor}SEH_end_$current_function->{name}:"
 				if ($win64 && $current_function->{abi} eq "svr4");
 			undef $current_function;
