@@ -280,7 +280,7 @@ $code.=<<___ if ($SZ==4 || $avx);
 ___
 $code.=<<___ if ($SZ==4 && $shaext);
 	test	\$`1<<29`,%eax		# check for SHA
-	jnz	_shaext_shortcut
+	jnz	.Lshaext_shortcut
 ___
 $code.=<<___ if ($avx && $SZ==8);
 	test	\$`1<<11`,%r10d		# check for XOP
@@ -562,8 +562,8 @@ $code.=<<___;
 .type	sha256_block_data_order_shaext,\@function,3,"unwind"
 .align	64
 sha256_block_data_order_shaext:
-_shaext_shortcut:
 .cfi_startproc
+.Lshaext_shortcut:
 ___
 $code.=<<___ if ($win64);
 	sub	\$0x58,%rsp
