@@ -118,6 +118,8 @@ my %globals;
 	    if ($self->{op} =~ /^(movz)x?([bw]).*/) {	# movz is pain...
 		$self->{op} = $1;
 		$self->{sz} = $2;
+	    } elsif ($self->{op} =~ /cmov[n]?[lb]$/) {
+		# pass though
 	    } elsif ($self->{op} =~ /call|jmp/) {
 		$self->{sz} = "";
 	    } elsif ($self->{op} =~ /^p/ && $' !~ /^(ush|op|insrw)/) { # SSEn
