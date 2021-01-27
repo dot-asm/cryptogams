@@ -25,6 +25,7 @@
 #			IALU/gcc-4.9	4xNEON+1xIALU	6xNEON+2xIALU
 #
 # Apple A7		5.50/+49%	2.72		1.60
+# Apple A14/M1		4.50/+27%	1.84		1.27
 # Cortex-A53		8.40/+80%	4.06		4.45(*)
 # Cortex-A57		8.06/+43%	4.15		4.40(*)
 # Cortex-A76		5.52		2.90		2.40

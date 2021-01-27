@@ -12,6 +12,8 @@
 #
 #		hardware-assisted	software(*)
 # Apple A7	2.31			4.13 (+14%)
+# Apple A10	1.61
+# Apple A14/M1	1.32			3.82 (-13%)(***)
 # Cortex-A53	2.24			8.03 (+97%)
 # Cortex-A57	2.35			7.88 (+74%)
 # Cortex-A76	1.64			5.20
@@ -24,6 +26,8 @@
 # (*)	Software results are presented mostly for reference purposes.
 # (**)	Keep in mind that Denver relies on binary translation, which
 #	optimizes compiler output at run-time.
+# (***)	There is some room for improvement on "extra-wide" processor
+#	such as A14/M1. Nothing is done, because it's not used anyway.
 
 $flavour = shift;
 $output  = shift;

@@ -46,6 +46,9 @@
 # Kryo		12
 # Denver	7.8
 # Apple A7	7.2
+# Apple A10	6.1
+# Apple A12	4.4
+# Apple A14/M1	3.5 (hw)
 # ThunderX2	9.7
 #
 # (*)	Corresponds to SHA3-256. No improvement coefficients are listed

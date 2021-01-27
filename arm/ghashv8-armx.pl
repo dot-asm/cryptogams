@@ -29,6 +29,8 @@
 #
 #		64-bit PMULL	32-bit PMULL	32-bit NEON(*)
 # Apple A7	0.58		0.92		5.62
+# Apple A10	0.47
+# Apple A14/M1	0.44
 # Cortex-A53	0.85		1.01		8.39
 # Cortex-A57	0.73		1.17		7.61
 # Cortex-A76	0.47
