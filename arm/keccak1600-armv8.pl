@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 #
 # ====================================================================
-# Written by Andy Polyakov <appro@openssl.org> for the OpenSSL
+# Written by Andy Polyakov, @dot-asm, initially for the OpenSSL
 # project. The module is, however, dual licensed under OpenSSL and
 # CRYPTOGAMS licenses depending on where you obtain it. For further
 # details see http://www.openssl.org/~appro/cryptogams/.
@@ -727,14 +727,31 @@ $code.=<<___;
 ___
 sub load_n_xor_ce {
     my ($from,$to) = @_;
+    my $range = $to-$from+1;
 
-    for (my $i=$from; $i<=$to; $i++) {
+    while ($range>=4) {
 $code.=<<___;
-	ldr	d31,[$inp,#`8*$i`]		// A[`$i/5`][`$i%5`] ^= *inp++
-#ifdef	__AARCH64EB__
-	rev	v31.16b,v31.16b
-#endif
-	eor	$A[$i/5][$i%5],$A[$i/5][$i%5],v31.16b
+	ld1	{v27.8b-v30.8b},[$inp],#32
+	eor 	$A[$from/5][$from%5],$A[$from/5][$from++%5],v27.16b
+	eor 	$A[$from/5][$from%5],$A[$from/5][$from++%5],v28.16b
+	eor 	$A[$from/5][$from%5],$A[$from/5][$from++%5],v29.16b
+	eor 	$A[$from/5][$from%5],$A[$from/5][$from++%5],v30.16b
+___
+	$range-=4;
+    }
+    while ($range>=3) {
+$code.=<<___;
+	ld1	{v28.8b-v30.8b},[$inp],#24
+	eor 	$A[$from/5][$from%5],$A[$from/5][$from++%5],v28.16b
+	eor 	$A[$from/5][$from%5],$A[$from/5][$from++%5],v29.16b
+	eor 	$A[$from/5][$from%5],$A[$from/5][$from++%5],v30.16b
+___
+	$range-=3;
+    }
+    while ($from<=$to) {
+$code.=<<___;
+	ld1	{v31.8b},[$inp],#8	// A[`$from/5`][`$from%5`] ^= *inp++
+	eor	$A[$from/5][$from%5],$A[$from/5][$from++%5],v31.16b
 ___
     }
 }
@@ -763,8 +780,6 @@ load_n_xor_ce(18,20);
 $code.=<<___;
 
 .Lprocess_block_ce:
-	add	$inp,$inp,$bsz
-
 	bl	KeccakF1600_ce
 
 	b	.Loop_absorb_ce
@@ -858,7 +873,7 @@ SHA3_squeeze_cext:
 ___
 }								}}}
 $code.=<<___;
-.asciz	"Keccak-1600 absorb and squeeze for ARMv8, CRYPTOGAMS by <appro\@openssl.org>"
+.asciz	"Keccak-1600 absorb and squeeze for ARMv8, CRYPTOGAMS by \@dot-asm"
 ___
 
 {   my  %opcode = (
