@@ -48,7 +48,7 @@
 # Apple A7	7.2
 # Apple A10	6.1
 # Apple A12	4.4
-# Apple A14/M1	3.5 (hw)
+# Apple A14/M1	3.5 (**)
 # ThunderX2	9.7
 #
 # (*)	Corresponds to SHA3-256. No improvement coefficients are listed
@@ -56,6 +56,7 @@
 #	compiler does much better and improvement varies from 5% on
 #	Cortex-A57 to 25% on Cortex-A53. While in comparison to older
 #	compiler this code is at least 2x faster...
+# (**)	The result is for hardware-assisted implementation below.
 
 $flavour = shift;
 $output  = shift;
@@ -77,6 +78,11 @@ my @rhotates = ([  0,  1, 62, 28, 27 ],
                 [ 41, 45, 15, 21,  8 ],
                 [ 18,  2, 61, 56, 14 ]);
 
+my $sha3ops = ($flavour =~ /\+sha3/);
+
+$code.=<<___	if ($sha3ops);
+.arch	armv8.2-a+sha3
+___
 $code.=<<___;
 .text
 
@@ -97,6 +103,7 @@ iotas:
 	.quad	0x0000000000000088
 	.quad	0x0000000080008009
 	.quad	0x000000008000000a
+.Liotas12:
 	.quad	0x000000008000808b
 	.quad	0x800000000000008b
 	.quad	0x8000000000008089
@@ -122,7 +129,7 @@ $code.=<<___;
 .type	KeccakF1600_int,%function
 .align	5
 KeccakF1600_int:
-	adr	$C[2],iotas
+	.inst	0xd503233f			// paciasp
 	stp	$C[2],x30,[sp,#16]		// 32 bytes on top are mine
 	b	.Loop
 .align	4
@@ -294,12 +301,14 @@ $code.=<<___;
 	bne	.Loop
 
 	ldr	x30,[sp,#24]
+	.inst	0xd50323bf			// autiasp
 	ret
 .size	KeccakF1600_int,.-KeccakF1600_int
 
 .type	KeccakF1600,%function
 .align	5
 KeccakF1600:
+	.inst	0xd503233f			// paciasp
 	stp	x29,x30,[sp,#-128]!
 	add	x29,sp,#0
 	stp	x19,x20,[sp,#16]
@@ -325,6 +334,7 @@ KeccakF1600:
 	ldp	$A[4][2],$A[4][3],[$C[0],#16*11]
 	ldr	$A[4][4],[$C[0],#16*12]
 
+	adr	$C[2],iotas
 	bl	KeccakF1600_int
 
 	ldr	$C[0],[sp,#32]
@@ -349,6 +359,7 @@ KeccakF1600:
 	ldp	x25,x26,[x29,#64]
 	ldp	x27,x28,[x29,#80]
 	ldp	x29,x30,[sp],#128
+	.inst	0xd50323bf			// autiasp
 	ret
 .size	KeccakF1600,.-KeccakF1600
 
@@ -356,6 +367,7 @@ KeccakF1600:
 .type	SHA3_absorb,%function
 .align	5
 SHA3_absorb:
+	.inst	0xd503233f			// paciasp
 	stp	x29,x30,[sp,#-128]!
 	add	x29,sp,#0
 	stp	x19,x20,[sp,#16]
@@ -436,6 +448,7 @@ $code.=<<___;
 	add	$C[1],@C[1],@C[3]
 	str	$C[1],[sp,#40]			// save inp
 
+	adr	$C[2],iotas
 	bl	KeccakF1600_int
 
 	ldr	$C[1],[sp,#40]			// restore arguments
@@ -467,6 +480,7 @@ $code.=<<___;
 	ldp	x25,x26,[x29,#64]
 	ldp	x27,x28,[x29,#80]
 	ldp	x29,x30,[sp],#128
+	.inst	0xd50323bf			// autiasp
 	ret
 .size	SHA3_absorb,.-SHA3_absorb
 ___
@@ -477,6 +491,7 @@ $code.=<<___;
 .type	SHA3_squeeze,%function
 .align	5
 SHA3_squeeze:
+	.inst	0xd503233f			// paciasp
 	stp	x29,x30,[sp,#-48]!
 	add	x29,sp,#0
 	stp	x19,x20,[sp,#16]
@@ -539,6 +554,7 @@ SHA3_squeeze:
 	ldp	x19,x20,[sp,#16]
 	ldp	x21,x22,[sp,#32]
 	ldp	x29,x30,[sp],#48
+	.inst	0xd50323bf			// autiasp
 	ret
 .size	SHA3_squeeze,.-SHA3_squeeze
 ___
@@ -555,10 +571,6 @@ $code.=<<___;
 .type	KeccakF1600_ce,%function
 .align	5
 KeccakF1600_ce:
-	mov	x9,#24
-	adr	x10,iotas
-	b	.Loop_ce
-.align	4
 .Loop_ce:
 	////////////////////////////////////////////////// Theta
 	eor3	$C[0],$A[4][0],$A[3][0],$A[2][0]
@@ -648,7 +660,7 @@ KeccakF1600_ce:
 
 	eor	$A[0][0],$A[0][0],$C[1]
 
-	subs	x9,x9,#1
+	tst	x10,#255
 	bne	.Loop_ce
 
 	ret
@@ -657,6 +669,7 @@ KeccakF1600_ce:
 .type	KeccakF1600_cext,%function
 .align	5
 KeccakF1600_cext:
+	.inst	0xd503233f		// paciasp
 	stp	x29,x30,[sp,#-80]!
 	add	x29,sp,#0
 	stp	d8,d9,[sp,#16]		// per ABI requirement
@@ -672,6 +685,7 @@ ___
 }
 $code.=<<___;
 	ldr	d24,[x0,#8*$i]
+	adr	x10,iotas
 	bl	KeccakF1600_ce
 	ldr	x30,[sp,#8]
 ___
@@ -689,6 +703,7 @@ $code.=<<___;
 	ldp	d12,d13,[sp,#48]
 	ldp	d14,d15,[sp,#64]
 	ldr	x29,[sp],#80
+	.inst	0xd50323bf		// autiasp
 	ret
 .size	KeccakF1600_cext,.-KeccakF1600_cext
 ___
@@ -701,6 +716,7 @@ $code.=<<___;
 .type	SHA3_absorb_cext,%function
 .align	5
 SHA3_absorb_cext:
+	.inst	0xd503233f		// paciasp
 	stp	x29,x30,[sp,#-80]!
 	add	x29,sp,#0
 	stp	d8,d9,[sp,#16]		// per ABI requirement
@@ -780,6 +796,7 @@ load_n_xor_ce(18,20);
 $code.=<<___;
 
 .Lprocess_block_ce:
+	adr	x10,iotas
 	bl	KeccakF1600_ce
 
 	b	.Loop_absorb_ce
@@ -802,6 +819,7 @@ $code.=<<___;
 	ldp	d12,d13,[sp,#48]
 	ldp	d14,d15,[sp,#64]
 	ldp	x29,x30,[sp],#80
+	.inst	0xd50323bf		// autiasp
 	ret
 .size	SHA3_absorb_cext,.-SHA3_absorb_cext
 ___
@@ -813,6 +831,7 @@ $code.=<<___;
 .type	SHA3_squeeze_cext,%function
 .align	5
 SHA3_squeeze_cext:
+	.inst	0xd503233f		// paciasp
 	stp	x29,x30,[sp,#-16]!
 	add	x29,sp,#0
 	mov	x9,$ctx
@@ -868,6 +887,7 @@ SHA3_squeeze_cext:
 
 .Lsqueeze_done_ce:
 	ldr	x29,[sp],#16
+	.inst	0xd50323bf		// autiasp
 	ret
 .size	SHA3_squeeze_cext,.-SHA3_squeeze_cext
 ___
@@ -896,8 +916,8 @@ foreach(split("\n",$code)) {
 
 	s/\`([^\`]*)\`/eval($1)/ge;
 
-	m/\bld1r\b/ and s/\.16b/.2d/g	or
-	s/\b(eor3|rax1|xar|bcax)\s+(v.*)/unsha3($1,$2)/ge;
+	m/\b(ld1r|rax1|xar)\b/ and s/\.16b/.2d/g;
+	$sha3ops or s/\b(eor3|rax1|xar|bcax)\s+(v.*)/unsha3($1,$2)/ge;
 
 	print $_,"\n";
 }
