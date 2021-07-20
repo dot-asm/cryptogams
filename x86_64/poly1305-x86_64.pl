@@ -200,6 +200,9 @@ poly1305_init:
 	mov	%rax,24($ctx)
 	mov	%rcx,32($ctx)
 ___
+$code.=<<___	if ($avx);
+	movl	\$-1,48($ctx)		# write impossible value
+___
 					if ($flavour !~ /kernel/) {
 $code.=<<___;
 	lea	poly1305_blocks(%rip),%r10
@@ -210,7 +213,6 @@ $code.=<<___	if ($avx);
 	lea	poly1305_blocks_avx(%rip),%rax
 	bt	\$`60-32`,%r9		# AVX?
 	cmovc	%rax,%r10
-	movl	\$-1,48($ctx)		# write impossible value
 ___
 $code.=<<___	if ($avx>1);
 	lea	poly1305_blocks_avx2(%rip),%rax
