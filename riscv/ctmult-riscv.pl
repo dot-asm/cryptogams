@@ -58,15 +58,13 @@ $code.=<<___	if ($flavour =~ /64/);
 #else				// no multiplier, just shift-n-conditional-add
 	sll	$a2, $a0, 32
 	li	$a0, 0
-	srl	$a2, $a2, 32		# a2 = a0 & 0xffffffff
 	li	$t1, 32
 .Loop:
-	and	$t0, $a1, 1
-	srl	$a1, $a1, 1
-	neg	$t0, $t0
+	sraw	$t0, $a1, 31
+	srl	$a2, $a2, 1
 	addi	$t1, $t1, -1
 	and	$t0, $t0, $a2
-	sll	$a2, $a2, 1
+	sllw	$a1, $a1, 1
 	add	$a0, $a0, $t0
 	bnez	$t1, .Loop
 #endif
@@ -123,28 +121,33 @@ $code.=<<___	if ($flavour =~ /32/);
 	addw	$a1, $a1, $a3
 	addw	$a1, $a1, $a4
 #else				// no multiplier, just shift-n-conditional-add
-	and	$t0, $a0, 1
-	srl	$a2, $a0, 1
-	neg	$t0, $t0
+	sraw	$t0, $a0, 31
+	sllw	$a2, $a0, 1
+	and	$a4, $a1, $t0
 	mv	$a3, $a1
-	and	$a0, $a1, $t0
-	li	$a1, 0
-	li	$t1, 31
-	li	$t2, 0
+	sllw	$a0, $a4, 31
+	srlw	$a1, $a4, 1
+	li	$t1, 30
+	li	$t2, 1
 .Loop:
-	and	$t0, $a2, 1
-	srlw	$a2, $a2, 1
-	neg	$t0, $t0
-	addi	$t2, $t2, 1
+	sraw	$t0, $a2, 31
+	sllw	$a2, $a2, 1
 	and	$a4, $a3, $t0
-	sllw	$a5, $a4, $t2
-	srlw	$a6, $a4, $t1
+	addi	$t2, $t2, 1
+	sllw	$a5, $a4, $t1
+	srlw	$a6, $a4, $t2
 	addw	$a0, $a0, $a5
 	addw	$a1, $a1, $a6
 	sltu	$a5, $a0, $a5
 	addi	$t1, $t1, -1
 	addw	$a1, $a1, $a5
 	bnez	$t1, .Loop
+
+	sraw	$t0, $a2, 31
+	and	$a4, $a3, $t0
+	addw	$a0, $a0, $a4
+	sltu	$a5, $a0, $a4
+	addw	$a1, $a1, $a5
 #endif
 #if __riscv_xlen == 64
 	sll	$a0, $a0, 32
