@@ -11,6 +11,9 @@
 # This is transliteration of MIPS module [without big-endian option].
 # See keccak1600-mips.pl for details...
 #
+# 24 cycles per byte processed with SHA3-256 on U74, ~50% faster than
+# compiler-generated code.
+#
 ######################################################################
 ($zero,$ra,$sp,$gp,$tp) = map("x$_",(0..4));
 ($a0,$a1,$a2,$a3,$a4,$a5,$a6,$a7)=map("x$_",(10..17));

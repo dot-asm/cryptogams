@@ -11,6 +11,8 @@
 # In the essence it's pretty straightforward transliteration of MIPS
 # module [without big-endian option].
 #
+# 3.9 cycles per byte on U74, ~60% faster than compiler-generated code.
+#
 ######################################################################
 #
 ($zero,$ra,$sp,$gp,$tp)=map("x$_",(0..4));

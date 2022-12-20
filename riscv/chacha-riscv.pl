@@ -10,6 +10,9 @@
 #
 # This is transliteration of MIPS module [without big-endian option].
 #
+# 14.1 cycles per byte on U74 for aligned input, ~70% faster than
+# compiler-generated code. Misaligned input is processed in 16.4 cpb.
+#
 ######################################################################
 #
 ($zero,$ra,$sp,$gp,$tp) = map("x$_",(0..4));
