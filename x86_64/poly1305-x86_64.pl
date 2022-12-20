@@ -36,6 +36,7 @@
 # Haswell	1.14/+175%	1.11		0.65
 # Skylake[-X]	1.13/+120%	0.96		0.51	[0.35]
 # Cannon Lake	1.13/+120%	0.93		0.38(iv)0.24(iv)
+# Rocket Lake	1.13/+120%	0.84		0.43(iv)0.24(iv)
 # Silvermont	2.83/+95%	-
 # Knights L	3.60/?		1.65		1.10	0.41(iii)
 # Goldmont	1.70/+180%	-
