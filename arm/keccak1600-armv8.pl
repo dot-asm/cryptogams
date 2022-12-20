@@ -58,7 +58,9 @@
 #	Cortex-A57 to 25% on Cortex-A53. While in comparison to older
 #	compiler this code is at least 2x faster...
 # (**)	The result is for hardware-assisted implementation below.
-# (***)	Hardware-assisted code is significantly slower, 11.3?
+# (***)	Hardware-assisted code is significantly slower, 11.3,
+#	apparently because the processor can issue just one SHA3
+#	instruction per cycle.
 
 $flavour = shift;
 $output  = shift;
