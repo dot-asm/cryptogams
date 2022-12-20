@@ -193,36 +193,15 @@ $code.=<<___;
 .class public sequential ansi beforefieldinit $class
        extends [mscorlib]System.Object
 {
-    .field private unsigned int64 $A[0][0]
-    .field private unsigned int64 $A[0][1]
-    .field private unsigned int64 $A[0][2]
-    .field private unsigned int64 $A[0][3]
-    .field private unsigned int64 $A[0][4]
-
-    .field private unsigned int64 $A[1][0]
-    .field private unsigned int64 $A[1][1]
-    .field private unsigned int64 $A[1][2]
-    .field private unsigned int64 $A[1][3]
-    .field private unsigned int64 $A[1][4]
-
-    .field private unsigned int64 $A[2][0]
-    .field private unsigned int64 $A[2][1]
-    .field private unsigned int64 $A[2][2]
-    .field private unsigned int64 $A[2][3]
-    .field private unsigned int64 $A[2][4]
-
-    .field private unsigned int64 $A[3][0]
-    .field private unsigned int64 $A[3][1]
-    .field private unsigned int64 $A[3][2]
-    .field private unsigned int64 $A[3][3]
-    .field private unsigned int64 $A[3][4]
-
-    .field private unsigned int64 $A[4][0]
-    .field private unsigned int64 $A[4][1]
-    .field private unsigned int64 $A[4][2]
-    .field private unsigned int64 $A[4][3]
-    .field private unsigned int64 $A[4][4]
-
+___
+for (my $i=0; $i<5; $i++) {
+  for (my $j=0; $j<5; $j++) {
+$code.=<<___;
+    .field private unsigned int64 $A[$i][$j]
+___
+  }
+}
+$code.=<<___;
     .field private static valuetype Keccak1600.Iotas iotas32 at iotas32
     .field private static valuetype Keccak1600.Iotas iotas64 at iotas64
 
