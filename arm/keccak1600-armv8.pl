@@ -41,6 +41,7 @@
 # Cortex-A53	13
 # Cortex-A57	12
 # Cortex-A76	7.9
+# Cortex-X2	6.1 (***)
 # X-Gene	14
 # Mongoose	10
 # Kryo		12
@@ -57,6 +58,7 @@
 #	Cortex-A57 to 25% on Cortex-A53. While in comparison to older
 #	compiler this code is at least 2x faster...
 # (**)	The result is for hardware-assisted implementation below.
+# (***)	Hardware-assisted code is significantly slower, 11.3?
 
 $flavour = shift;
 $output  = shift;

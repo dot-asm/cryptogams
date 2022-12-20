@@ -34,6 +34,7 @@
 # Cortex-A53	0.85		1.01		8.39
 # Cortex-A57	0.73		1.17		7.61
 # Cortex-A76	0.47
+# Cortex-X2	0.44
 # Denver	0.51		0.65		6.02
 # Mongoose	0.65		1.10		8.06
 # Kryo		0.76		1.16		8.00
