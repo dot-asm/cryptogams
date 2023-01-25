@@ -842,9 +842,17 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 				= @{pop @cfa_stack};
 				last;
 			      };
-	    /offset/	&& do { if ($$line =~ /(%\w+)\s*,\s*(.+)/) {
-				    $saved_regs{$1} = 1*eval($2);
-				    $dir = undef if ($1 =~ /%xmm/);
+	    /offset/	&& do { if ($$line =~ /(%\w+)(?:-%xmm(\d+))?\s*,\s*(.+)/) {
+				    my ($reg, $off, $xmmlast) = ($1, 1*eval($3), $2);
+				    if ($reg !~ /%xmm(\d+)/) {
+					$saved_regs{$reg} = $off;
+				    } else {
+					$dir = undef;
+					for (my $i=$1; $i<=$xmmlast; $i++) {
+					    $saved_regs{"%xmm$i"} = $off;
+					    $off += 16;
+					}
+				    }
 				}
 				last;
 			      };
