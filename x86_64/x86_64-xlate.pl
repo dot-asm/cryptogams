@@ -240,11 +240,11 @@ my %globals;
 	my	$ret;
 
 	# optional * ----vvv--- appears in indirect jmp/call
-	if ($$line =~ /^(\*?)([^\(,]*)\(([%\w,]+)\)((?:{[^}]+})*)/) {
+	if ($$line =~ /^(\*?)([^\(,]*)\(([%\w,\s]+)\)((?:{[^}]+})*)/) {
 	    bless $self, $class;
 	    $self->{asterisk} = $1;
 	    $self->{label} = $2;
-	    ($self->{base},$self->{index},$self->{scale})=split(/,/,$3);
+	    ($self->{base},$self->{index},$self->{scale})=split(/(?:,\s*)/,$3);
 	    $self->{scale} = 1 if (!defined($self->{scale}));
 	    $self->{opmask} = $4;
 	    $ret = $self;
