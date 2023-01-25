@@ -406,21 +406,38 @@ my %globals;
 		    $func .= "	movq	%rsi,16(%rsp)\n";
 		    $func .= "	movq	%rsp,$fp\n";
 		    $func .= "${decor}SEH_begin_$current_function->{name}:\n";
-		    my $narg = $current_function->{narg};
-		    $narg=6 if (!defined($narg));
-		    $func .= "	movq	%rcx,%rdi\n" if ($narg>0);
-		    $func .= "	movq	%rdx,%rsi\n" if ($narg>1);
-		    $func .= "	movq	%r8,%rdx\n"  if ($narg>2);
-		    $func .= "	movq	%r9,%rcx\n"  if ($narg>3);
-		    $func .= "	movq	40(%rsp),%r8\n" if ($narg>4);
-		    $func .= "	movq	48(%rsp),%r9\n" if ($narg>5);
 		}
+	    } elsif ($win64 && $current_function->{abi} eq "svr4"
+			    && $current_function->{narg} >= 0) {
+		my $narg = $current_function->{narg} // 6;
+		$func = undef;
+		$func .= "	movq	%rcx,%rdi\n" if ($narg>0);
+		$func .= "	movq	%rdx,%rsi\n" if ($narg>1);
+		$func .= "	movq	%r8,%rdx\n"  if ($narg>2);
+		$func .= "	movq	%r9,%rcx\n"  if ($narg>3);
+		$func .= "	movq	40(%rsp),%r8\n" if ($narg>4);
+		$func .= "	movq	48(%rsp),%r9\n" if ($narg>5);
+		$func .= ($globals{$self->{value}} or $self->{value}) . ":";
+		$current_function->{narg} = -1;
 	    }
 	    $func;
 	} elsif ($self->{value} ne "$current_function->{name}") {
+	    my $func;
+	    if ($win64 && $current_function->{abi} eq "svr4"
+		       && $current_function->{narg} >= 0) {
+		my $narg = $current_function->{narg} // 6;
+		$func .= "	mov	rdi,rcx\n" if ($narg>0);
+		$func .= "	mov	rsi,rdx\n" if ($narg>1);
+		$func .= "	mov	rdx,r8\n"  if ($narg>2);
+		$func .= "	mov	rcx,r9\n"  if ($narg>3);
+		$func .= "	mov	r8,QWORD$PTR\[40+rsp\]\n" if ($narg>4);
+		$func .= "	mov	r9,QWORD$PTR\[48+rsp\]\n" if ($narg>5);
+		$current_function->{narg} = -1;
+	    }
+	    $func .= $self->{value} . ":";
 	    # Make all labels in masm global.
-	    $self->{value} .= ":" if ($masm);
-	    $self->{value} . ":";
+	    $func .= ":" if ($masm);
+	    $func;
 	} elsif ($win64 && $current_function->{abi} eq "svr4") {
 	    my $func =	"$current_function->{name}" .
 			($nasm ? ":" : "\tPROC $current_function->{scope}") .
@@ -432,15 +449,6 @@ my %globals;
 	    $func .= "	mov	$fp,rsp\n";
 	    $func .= "${decor}SEH_begin_$current_function->{name}:";
 	    $func .= ":" if ($masm);
-	    $func .= "\n";
-	    my $narg = $current_function->{narg};
-	    $narg=6 if (!defined($narg));
-	    $func .= "	mov	rdi,rcx\n" if ($narg>0);
-	    $func .= "	mov	rsi,rdx\n" if ($narg>1);
-	    $func .= "	mov	rdx,r8\n"  if ($narg>2);
-	    $func .= "	mov	rcx,r9\n"  if ($narg>3);
-	    $func .= "	mov	r8,QWORD$PTR\[40+rsp\]\n" if ($narg>4);
-	    $func .= "	mov	r9,QWORD$PTR\[48+rsp\]\n" if ($narg>5);
 	    $func .= "\n";
 	} else {
 	   "$current_function->{name}".
@@ -672,48 +680,9 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	our @dat = ();
 	our $len = 0;
 
-	sub allocstack {
-	    my $offset = shift;
+	sub savereg {
+	    my ($key, $offset) = @_;
 
-	    if ($offset) {
-		if ($offset <= 128) {
-		    $offset = ($offset - 8) >> 3;
-		    push @dat, [0,$offset<<4|2];	# UWOP_ALLOC_SMALL
-		} elsif ($offset < 0x80000) {
-		    push @dat, [0,0x01,unpack("C2",pack("v",$offset>>3))];
-		} else {
-		    push @dat, [0,0x11,unpack("C4",pack("V",$offset))];
-		}
-		$len += $#{@dat[-1]}+1;
-	    }
-	}
-
-	# allocate stack frame
-	if (my $offset = -8 - $cfa_rsp) {
-	    # but see if frame pointer is among saved registers
-	    if ($cfa_reg ne "%rsp" and my $fp_off = $saved_regs{$cfa_reg}) {
-		$fp_off = -8 - $fp_off;
-		allocstack($fp_off-8);
-		$offset -= $fp_off;
-		push @dat, [0,$WIN64_reg_idx{$cfa_reg}<<4]; # UWOP_PUSH_NONVOL
-		$len += $#{@dat[-1]}+1;
-	    }
-	    allocstack($offset);
-	}
-	# set up frame pointer
-	my $fp_info = 0;
-	if ($cfa_reg ne "%rsp") {
-	    my $offset = $cfa_off - $cfa_rsp;
-	    ($offset > 240 or $offset&0xf) and die "invalid FP offset $offset";
-	    $fp_info = ($offset&-16)|$WIN64_reg_idx{$cfa_reg};
-	    push @dat, [0,3];				# UWOP_SET_FPREG
-	    $len += $#{@dat[-1]}+1;
-	}
-	# save registers
-	foreach my $key (sort { $saved_regs{$b} <=> $saved_regs{$a} }
-			      keys(%saved_regs)) {
-	    next if ($cfa_reg ne "%rsp" && $cfa_reg eq $key);
-	    my $offset = $saved_regs{$key} - $cfa_rsp;
 	    if ($key =~ /%xmm([0-9]+)/) {
 		if ($offset < 0x100000) {
 		    push @dat, [0,($1<<4)|8,unpack("C2",pack("v",$offset>>4))];
@@ -730,6 +699,42 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 		}
 	    }
 	    $len += $#{@dat[-1]}+1;
+	}
+
+	# allocate stack frame
+	if ($cfa_rsp < -8) {
+	    my $offset = -8 - $cfa_rsp;
+	    if ($offset <= 128) {
+		$offset = ($offset - 8) >> 3;
+		push @dat, [0,$offset<<4|2];		# UWOP_ALLOC_SMALL
+	    } elsif ($offset < 0x80000) {
+		push @dat, [0,0x01,unpack("C2",pack("v",$offset>>3))];
+	    } else {
+		push @dat, [0,0x11,unpack("C4",pack("V",$offset))];
+	    }
+	    $len += $#{@dat[-1]}+1;
+	}
+
+	# set up frame pointer
+	my $fp_info = 0;
+	if ($cfa_reg ne "%rsp") {
+	    $fp_info = $WIN64_reg_idx{$cfa_reg};
+	    if (defined(my $offset = $saved_regs{$cfa_reg})) {
+		$offset -= $cfa_rsp;
+		($offset > 240 or $offset&0xf) and die "invalid FP offset $offset";
+		$fp_info |= $offset&-16;
+		savereg($cfa_reg, $offset);
+	    }
+	    push @dat, [0,($WIN64_reg_idx{$cfa_reg}<<4)|3]; # UWOP_SET_FPREG
+	    $len += $#{@dat[-1]}+1;
+	}
+
+	# save registers
+	foreach my $key (sort { $saved_regs{$b} <=> $saved_regs{$a} }
+			      keys(%saved_regs)) {
+	    next if ($cfa_reg ne "%rsp" && $cfa_reg eq $key);
+	    my $offset = $saved_regs{$key} - $cfa_rsp;
+	    savereg($key, $offset);
 	}
 
 	my @ret;
@@ -908,14 +913,25 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 		    ".rva	.LSEH_begin_${fname}",
 		    ".rva	.LSEH_body_${fname}",
 		    ".rva	.LSEH_info_${fname}_prologue","";
-		push @xdata_seg,
+		if ($current_function->{unwind} eq "%rbp") {
+		    push @xdata_seg,
 		    ".LSEH_info_${fname}_prologue:",
-		    ".byte	1,0,5,0x0b",	# 5 unwind codes, %r11 is FP
-		    ".byte	0,0x74,1,0",	# %rdi at 8(%rsp)
-		    ".byte	0,0x64,2,0",	# %rsi at 16(%rsp)
-		    ".byte	0,0x03",	# set frame pointer
-		    ".byte	0,0"		# padding
+			".byte	1,4,6,0x05",	# 6 unwind codes, %rbp is FP
+			".byte	4,0x74,2,0",	# %rdi at 16(%rsp)
+			".byte	4,0x64,3,0",	# %rsi at 24(%rsp)
+			".byte	4,0x53",	# mov	%rsp, %rbp
+			".byte	1,0x50",	# push	%rbp
 		    ;
+		} else {
+		    push @xdata_seg,
+		    ".LSEH_info_${fname}_prologue:",
+			".byte	1,0,5,0x0b",	# 5 unwind codes, %r11 is FP
+			".byte	0,0x74,1,0",	# %rdi at 8(%rsp)
+			".byte	0,0x64,2,0",	# %rsi at 16(%rsp)
+			".byte	0,0xb3",	# set frame pointer
+			".byte	0,0"		# padding
+		    ;
+		}
 		push @pdata_seg,
 		    ".rva	.LSEH_body_${fname}",
 		    ".rva	.LSEH_epilogue_${fname}",
@@ -981,10 +997,12 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 					$current_function->{narg} = $narg;
 					$current_function->{scope} = defined($globals{$sym})?"PUBLIC":"PRIVATE";
 					$current_function->{unwind} = $unwind;
+					$current_function->{pc} = 0;
 				    } elsif ($type eq "\@abi-omnipotent") {
 					undef $current_function;
 					$current_function->{name} = $sym;
 					$current_function->{scope} = defined($globals{$sym})?"PUBLIC":"PRIVATE";
+					$current_function->{pc} = 0;
 				    }
 				    $$line =~ s/\@abi\-omnipotent/\@function/;
 				    $$line =~ s/\@function.*/\@function/;
@@ -1425,6 +1443,41 @@ sub process {
 	    $line =~ s/^,\s*//;
 	} # ARGUMENT:
 
+	if ($win64 && $current_function->{abi} eq "svr4"
+		   && $current_function->{narg} >= 0) {
+	    my $pc = $current_function->{pc};
+	    my $op = $opcode->{op};
+	    my $a0 = @args[0]->{value} if ($#args>=0);
+	    if (!$current_function->{unwind}
+		|| $pc == 0 && !($op eq "push" && $a0 eq "rbp")
+		|| $pc == 1 && !($op eq "mov"  && $a0 eq "rsp"
+						&& @args[1]->{value} eq "rbp")
+		|| $pc > 1) {
+		$current_function->{unwind} = "%rbp" if ($pc == 2);
+		my $narg = $current_function->{narg} // 6;
+		my $func;
+		my $arg5 = 5*8 + ($pc > 0 ? 8 : 0);
+		my $arg6 = $arg5 + 8;
+		if ($gas) {
+		    $func  = "	movq	%rcx,%rdi\n" if ($narg>0);
+		    $func .= "	movq	%rdx,%rsi\n" if ($narg>1);
+		    $func .= "	movq	%r8,%rdx\n"  if ($narg>2);
+		    $func .= "	movq	%r9,%rcx\n"  if ($narg>3);
+		    $func .= "	movq	$arg5(%rsp),%r8\n" if ($narg>4);
+		    $func .= "	movq	$arg6(%rsp),%r9\n" if ($narg>5);
+		} else {
+		    $func .= "	mov	rdi,rcx\n" if ($narg>0);
+		    $func .= "	mov	rsi,rdx\n" if ($narg>1);
+		    $func .= "	mov	rdx,r8\n"  if ($narg>2);
+		    $func .= "	mov	rcx,r9\n"  if ($narg>3);
+		    $func .= "	mov	r8,QWORD$PTR\[$arg5+rsp\]\n" if ($narg>4);
+		    $func .= "	mov	r9,QWORD$PTR\[$arg6+rsp\]\n" if ($narg>5);
+		}
+		print $func,"\n";
+		$current_function->{narg} = -1;
+	    }
+	}
+
 	if ($#args>=0) {
 	    my $insn;
 	    my $sz=$opcode->size();
@@ -1450,6 +1503,8 @@ sub process {
 	} else {
 	    printf "\t%s",$opcode->out();
 	}
+
+	++$current_function->{pc} if (defined($current_function));
     }
 
     print $line,"\n";
@@ -1713,27 +1768,30 @@ close STDOUT;
 # and debugging/profiling was implemented by re-purposing DWARF .cfi
 # annotations even for Win64 unwind tables' generation. Unfortunately,
 # but not really unexpectedly, it imposes additional limitations on
-# coding style. Probably most significant limitation is that frame
-# pointer has to be at 16*n distance from stack pointer at the exit
-# from prologue. But first things first. There are two additional
+# coding style. Probably the most significant limitation is that the
+# frame pointer has to be at 16*n distance from the stack pointer at the
+# exit from prologue. But first things first. There are two additional
 # synthetic .cfi directives, .cfi_end_prologue and .cfi_epilogue,
 # that need to be added to all functions marked with additional .type
 # tag (see example below). There are "do's and don'ts" for prologue
-# and epilogue. It shouldn't come as surprise that in prologue one may
+# and epilogue. It shouldn't come as a surprise that in prologue one may
 # not modify non-volatile registers, but one may not modify %r11 either.
-# This is because it's used as temporary frame pointer(*). There is one
-# exception to this rule, and it's setting up frame pointer that is
-# non-volatile or %r11. But it must be last instruction in the prologue.
+# This is because it's used as a temporary frame pointer(*). There are
+# two exceptions to this rule. 1) One can set up a non-volatile register
+# or %r11 as a frame pointer, but it must be last instruction in the
+# prologue. 2) One can use 'push %rbp' as first instruction immediately
+# followed by 'mov %rsp,%rbp' to use %rbp as "legacy" frame pointer.
 # Constraints for epilogue, or rather on its boundary, depend on whether
 # the frame is fixed- or variable-length. In fixed-frame subroutine
-# stack pointer has to be restored in the last instruction prior the
-# .cfi_epilogue directive. If it's variable-frame subroutine, and a
-# non-volatile register was used as frame pointer, then last instruction
-# prior the directive has to restore its original value. This means that
-# final stack pointer adjustment would have to be pushed past the
-# directive. Normally this would render the epilogue non-unwindable, so
-# special care has to be taken. To resolve the dilemma, copy frame
-# pointer to a volatile register in advance. To give an example:
+# stack pointer has to be restored in the last instruction prior to the
+# .cfi_epilogue directive. If it's a variable-frame subroutine, and a
+# non-volatile register was used as a frame pointer, then the last
+# instruction prior to the directive has to restore its original value.
+# This means that final stack pointer adjustment would have to be
+# pushed past the directive. Normally this would render the epilogue
+# non-unwindable, so special care has to be taken. To resolve the
+# dilemma, copy the frame pointer to a volatile register in advance.
+# To give an example:
 #
 # .type	rbp_as_frame_pointer,\@function,3,"unwind"  # mind extra tag!
 # rbp_as_frame_pointer:
@@ -1757,6 +1815,33 @@ close STDOUT;
 #	ret
 # .cfi_endproc
 # .size	rbp_as_frame_pointer,.-rbp_as_frame_pointer
+#
+# An example of "legacy" frame pointer:
+#
+# .type	legacy_frame_pointer,\@function,3,"unwind"  # mind extra tag!
+# legacy_frame_pointer:
+# .cfi_startproc
+#	push	%rbp
+# .cfi_push	%rbp
+# 	mov	%rsp,%rbp
+# .cfi_def_cfa_register	%rbp
+#	push	%rbx
+# .cfi_push	%rbx
+#	sub	\$40,%rsp
+# .cfi_alloca	40
+# .cfi_end_prologue		# %rsp-%rbp has to be 16*n
+#	and	\$-64,%rsp
+#	...
+#	mov	-8(%rbp),%rbx
+# .cfi_restore	%rbx
+#	mov	%rbp,%rsp
+# .cfi_def_cfa	%rsp,16
+#	pop	%rbp		# recognized by Windows
+# .cfi_pop	%rbp
+# .cfi_epilogue
+#	ret
+# .cfi_endproc
+# .size	legacy_frame_pointer,.-legacy_frame_pointer
 #
 # To give an example of fixed-frame subroutine for reference:
 #
