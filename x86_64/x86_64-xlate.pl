@@ -519,6 +519,8 @@ my @pdata_seg = (".section	.pdata", ".align	4");
     #   stable;
     # - .cfi_epilogue to denote point when all non-volatile registers
     #   are restored [and it even adds missing .cfi_restore-s];
+    # - .cfi_alloca to denote stack pointer adjustments in the prologue
+    #   after the frame pointer is set;
     #
     # Though it's not universal "miracle cure," it has its limitations.
     # Most notably .cfi_cfa_expression won't start working... For more
@@ -795,6 +797,15 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 				$cfa_off -= $val;
 				if ($cfa_reg eq "%rsp") {
 				    $cfa_rsp -= $val;
+				}
+				last;
+			      };
+	    /alloca/	&& do { $dir = undef;
+				my $val = 1*eval($$line);
+				$cfa_rsp -= $val;
+				if ($cfa_reg eq "%rsp") {
+				    $cfa_off -= $val;
+				    $dir = "adjust_cfa_offset";
 				}
 				last;
 			      };
