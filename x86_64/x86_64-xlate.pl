@@ -119,7 +119,7 @@ my %globals;
 		$self->{op} = $1;
 		$self->{sz} = $2;
 	    } elsif ($self->{op} =~ /cmov[n]?[lb]$/) {
-		# pass though
+		# pass through
 	    } elsif ($self->{op} =~ /call|jmp/) {
 		$self->{sz} = "";
 	    } elsif ($self->{op} =~ /^p/ && $' !~ /^(ush|op|insrw)/) { # SSEn
@@ -168,7 +168,7 @@ my %globals;
 			   && !$current_function->{unwind}) {
 		    $self->{op} = "mov	rdi,QWORD$PTR\[8+rsp\]\t;WIN64 epilogue\n\t".
 				  "mov	rsi,QWORD$PTR\[16+rsp\]\n\t";
-	    	}
+		}
 		$self->{op} .= "DB\t0F3h,0C3h\t\t;repret";
 	    } elsif ($self->{op} =~ /^(pop|push)f/) {
 		$self->{op} .= $self->{sz};
@@ -675,7 +675,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 
 	    if ($offset) {
 		if ($offset <= 128) {
-	            $offset = ($offset - 8) >> 3;
+		    $offset = ($offset - 8) >> 3;
 		    push @dat, [0,$offset<<4|2];	# UWOP_ALLOC_SMALL
 		} elsif ($offset < 0x80000) {
 		    push @dat, [0,0x01,unpack("C2",pack("v",$offset>>3))];
@@ -690,7 +690,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	if (my $offset = -8 - $cfa_rsp) {
 	    # but see if frame pointer is among saved registers
 	    if ($cfa_reg ne "%rsp" and my $fp_off = $saved_regs{$cfa_reg}) {
-	        $fp_off = -8 - $fp_off;
+		$fp_off = -8 - $fp_off;
 		allocstack($fp_off-8);
 		$offset -= $fp_off;
 		push @dat, [0,$WIN64_reg_idx{$cfa_reg}<<4]; # UWOP_PUSH_NONVOL
