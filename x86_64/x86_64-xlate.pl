@@ -199,7 +199,7 @@ my %globals;
 	$ret;
     }
     sub out {
-    	my $self = shift;
+	my $self = shift;
 
 	$self->{value} =~ s/\b(0b[0-1]+)/oct($1)/eig;
 	if ($gas) {
@@ -368,7 +368,7 @@ my %globals;
 	$ret;
     }
     sub out {
-    	my $self = shift;
+	my $self = shift;
 	if ($gas)	{ sprintf "%s%%%s%s",	$self->{asterisk},
 						$self->{value},
 						$self->{opmask}; }
@@ -621,7 +621,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	my $val = shift;
 
 	if ($val >= 0 && $val < 32) {
-            return ($DW_OP_complex{lit0}+$val);
+	    return ($DW_OP_complex{lit0}+$val);
 	}
 	return ($DW_OP_complex{consts}, sleb128($val));
     }
@@ -1407,7 +1407,7 @@ ___
 sub process {
     my $line = shift;
 
-    $line =~ s|\R$||;           # Better chomp
+    $line =~ s|\R$||;		# Better chomp
 
     $line =~ s|[#!].*$||;	# get rid of asm-style comments...
     $line =~ s|/\*.*\*/||;	# ... and C-style comments...
