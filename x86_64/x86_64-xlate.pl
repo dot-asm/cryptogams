@@ -790,6 +790,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	    /def_cfa_register/
 			&& do {	$cfa_off = $cfa_rsp if ($cfa_reg eq "%rsp");
 				$cfa_reg = $$line;
+				$cfa_rsp = $cfa_off if ($cfa_reg eq "%rsp");
 				last;
 			      };
 	    /def_cfa_offset/
@@ -814,10 +815,15 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 				}
 				last;
 			      };
-	    /def_cfa/	&& do {	if ($$line =~ /(%r\w+)\s*,\s*(.+)/) {
+	    /def_cfa/	&& do {	if ($$line =~ /(%r\w+)\s*(?:,\s*(.+))?/) {
 				    $cfa_reg = $1;
-				    $cfa_off = -1*eval($2);
-				    $cfa_rsp = $cfa_off if ($cfa_reg eq "%rsp");
+				    if ($cfa_reg eq "%rsp" && !defined($2)) {
+					$cfa_off = $cfa_rsp;
+					$$line .= ",".(-$cfa_rsp);
+				    } else {
+					$cfa_off = -1*eval($2);
+					$cfa_rsp = $cfa_off if ($cfa_reg eq "%rsp");
+				    }
 				}
 				last;
 			      };
