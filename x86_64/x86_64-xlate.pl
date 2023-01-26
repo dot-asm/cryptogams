@@ -392,6 +392,30 @@ my %globals;
 	}
 	$ret;
     }
+    sub win64_args {
+	my $narg = $current_function->{narg} // 6;
+	return undef if ($narg < 0);
+	my $arg5 = 4*8 - cfi_directive::cfa_rsp();
+	my $arg6 = $arg5 + 8;
+	my $args;
+	if ($gas) {
+	    $args .= "	movq	%rcx,%rdi\n" if ($narg>0);
+	    $args .= "	movq	%rdx,%rsi\n" if ($narg>1);
+	    $args .= "	movq	%r8,%rdx\n"  if ($narg>2);
+	    $args .= "	movq	%r9,%rcx\n"  if ($narg>3);
+	    $args .= "	movq	$arg5(%rsp),%r8\n" if ($narg>4);
+	    $args .= "	movq	$arg6(%rsp),%r9\n" if ($narg>5);
+	} else {
+	    $args .= "	mov	rdi,rcx\n" if ($narg>0);
+	    $args .= "	mov	rsi,rdx\n" if ($narg>1);
+	    $args .= "	mov	rdx,r8\n"  if ($narg>2);
+	    $args .= "	mov	rcx,r9\n"  if ($narg>3);
+	    $args .= "	mov	r8,QWORD$PTR\[$arg5+rsp\]\n" if ($narg>4);
+	    $args .= "	mov	r9,QWORD$PTR\[$arg6+rsp\]\n" if ($narg>5);
+	}
+	$current_function->{narg} = -1;
+	$args;
+    }
     sub out {
 	my $self = shift;
 
@@ -409,30 +433,14 @@ my %globals;
 		}
 	    } elsif ($win64 && $current_function->{abi} eq "svr4"
 			    && $current_function->{narg} >= 0) {
-		my $narg = $current_function->{narg} // 6;
-		$func = undef;
-		$func .= "	movq	%rcx,%rdi\n" if ($narg>0);
-		$func .= "	movq	%rdx,%rsi\n" if ($narg>1);
-		$func .= "	movq	%r8,%rdx\n"  if ($narg>2);
-		$func .= "	movq	%r9,%rcx\n"  if ($narg>3);
-		$func .= "	movq	40(%rsp),%r8\n" if ($narg>4);
-		$func .= "	movq	48(%rsp),%r9\n" if ($narg>5);
-		$func .= ($globals{$self->{value}} or $self->{value}) . ":";
-		$current_function->{narg} = -1;
+		$func = win64_args().$func;
 	    }
 	    $func;
 	} elsif ($self->{value} ne "$current_function->{name}") {
 	    my $func;
 	    if ($win64 && $current_function->{abi} eq "svr4"
 		       && $current_function->{narg} >= 0) {
-		my $narg = $current_function->{narg} // 6;
-		$func .= "	mov	rdi,rcx\n" if ($narg>0);
-		$func .= "	mov	rsi,rdx\n" if ($narg>1);
-		$func .= "	mov	rdx,r8\n"  if ($narg>2);
-		$func .= "	mov	rcx,r9\n"  if ($narg>3);
-		$func .= "	mov	r8,QWORD$PTR\[40+rsp\]\n" if ($narg>4);
-		$func .= "	mov	r9,QWORD$PTR\[48+rsp\]\n" if ($narg>5);
-		$current_function->{narg} = -1;
+		$func = win64_args();
 	    }
 	    $func .= $self->{value} . ":";
 	    # Make all labels in masm global.
@@ -576,6 +584,8 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 
     my ($cfa_reg, $cfa_off, $cfa_rsp, %saved_regs);
     my @cfa_stack;
+
+    sub cfa_rsp { return $cfa_rsp // -8;  }
 
     # [us]leb128 format is variable-length integer representation base
     # 2^128, with most significant bit of each byte being 0 denoting
@@ -1449,9 +1459,8 @@ sub process {
 	    $line =~ s/^,\s*//;
 	} # ARGUMENT:
 
-	if ($win64 && $current_function->{abi} eq "svr4"
-		   && $current_function->{narg} >= 0) {
-	    my $pc = $current_function->{pc};
+	my $pc = $current_function->{pc};
+	if ($win64 && $current_function->{abi} eq "svr4" && $pc<=2) {
 	    my $op = $opcode->{op};
 	    my $a0 = @args[0]->{value} if ($#args>=0);
 	    if (!$current_function->{unwind}
@@ -1460,27 +1469,7 @@ sub process {
 						&& @args[1]->{value} eq "rbp")
 		|| $pc > 1) {
 		$current_function->{unwind} = "%rbp" if ($pc == 2);
-		my $narg = $current_function->{narg} // 6;
-		my $func;
-		my $arg5 = 5*8 + ($pc > 0 ? 8 : 0);
-		my $arg6 = $arg5 + 8;
-		if ($gas) {
-		    $func  = "	movq	%rcx,%rdi\n" if ($narg>0);
-		    $func .= "	movq	%rdx,%rsi\n" if ($narg>1);
-		    $func .= "	movq	%r8,%rdx\n"  if ($narg>2);
-		    $func .= "	movq	%r9,%rcx\n"  if ($narg>3);
-		    $func .= "	movq	$arg5(%rsp),%r8\n" if ($narg>4);
-		    $func .= "	movq	$arg6(%rsp),%r9\n" if ($narg>5);
-		} else {
-		    $func .= "	mov	rdi,rcx\n" if ($narg>0);
-		    $func .= "	mov	rsi,rdx\n" if ($narg>1);
-		    $func .= "	mov	rdx,r8\n"  if ($narg>2);
-		    $func .= "	mov	rcx,r9\n"  if ($narg>3);
-		    $func .= "	mov	r8,QWORD$PTR\[$arg5+rsp\]\n" if ($narg>4);
-		    $func .= "	mov	r9,QWORD$PTR\[$arg6+rsp\]\n" if ($narg>5);
-		}
-		print $func,"\n";
-		$current_function->{narg} = -1;
+		print label::win64_args();
 	    }
 	}
 
