@@ -422,6 +422,7 @@ my %globals;
 	if ($gas) {
 	    my $func = ($globals{$self->{value}} or $self->{value}) . ":";
 	    if ($current_function->{name} eq $self->{value}) {
+		$current_function->{pc} = 0;
 		$func .= "\n.cfi_".cfi_directive::startproc()   if ($dwarf);
 		$func .= "\n	.byte	0xf3,0x0f,0x1e,0xfa\n";	# endbranch
 		if ($win64 && $current_function->{abi} eq "svr4") {
@@ -432,14 +433,14 @@ my %globals;
 		    $func .= "${decor}SEH_begin_$current_function->{name}:\n";
 		}
 	    } elsif ($win64 && $current_function->{abi} eq "svr4"
-			    && $current_function->{narg} >= 0) {
+			    && $current_function->{pc} >= 0) {
 		$func = win64_args().$func;
 	    }
 	    $func;
 	} elsif ($self->{value} ne "$current_function->{name}") {
 	    my $func;
 	    if ($win64 && $current_function->{abi} eq "svr4"
-		       && $current_function->{narg} >= 0) {
+		       && $current_function->{pc} >= 0) {
 		$func = win64_args();
 	    }
 	    $func .= $self->{value} . ":";
@@ -447,6 +448,7 @@ my %globals;
 	    $func .= ":" if ($masm);
 	    $func;
 	} elsif ($win64 && $current_function->{abi} eq "svr4") {
+	    $current_function->{pc} = 0;
 	    my $func =	"$current_function->{name}" .
 			($nasm ? ":" : "\tPROC $current_function->{scope}") .
 			"\n";
@@ -459,6 +461,7 @@ my %globals;
 	    $func .= ":" if ($masm);
 	    $func .= "\n";
 	} else {
+	    $current_function->{pc} = 0;
 	   "$current_function->{name}".
 			($nasm ? ":" : "\tPROC $current_function->{scope}").
 	   "\n	DB	243,15,30,250";			# endbranch
@@ -1013,12 +1016,12 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 					$current_function->{narg} = $narg;
 					$current_function->{scope} = defined($globals{$sym})?"PUBLIC":"PRIVATE";
 					$current_function->{unwind} = $unwind;
-					$current_function->{pc} = 0;
+					$current_function->{pc} = -1;
 				    } elsif ($type eq "\@abi-omnipotent") {
 					undef $current_function;
 					$current_function->{name} = $sym;
 					$current_function->{scope} = defined($globals{$sym})?"PUBLIC":"PRIVATE";
-					$current_function->{pc} = 0;
+					$current_function->{pc} = -1;
 				    }
 				    $$line =~ s/\@abi\-omnipotent/\@function/;
 				    $$line =~ s/\@function.*/\@function/;
@@ -1459,16 +1462,17 @@ sub process {
 	    $line =~ s/^,\s*//;
 	} # ARGUMENT:
 
-	my $pc = $current_function->{pc};
-	if ($win64 && $current_function->{abi} eq "svr4" && $pc<=2) {
+	if ($win64 && $current_function->{abi} eq "svr4"
+		   && $current_function->{narg} >= 0) {
+	    my $pc = $current_function->{pc};
 	    my $op = $opcode->{op};
 	    my $a0 = @args[0]->{value} if ($#args>=0);
 	    if (!$current_function->{unwind}
 		|| $pc == 0 && !($op eq "push" && $a0 eq "rbp")
-		|| $pc == 1 && !($op eq "mov"  && $a0 eq "rsp"
-						&& @args[1]->{value} eq "rbp")
+		|| $pc == 1 && !($op eq "mov" && $a0 eq "rsp"
+					      && @args[1]->{value} eq "rbp"
+					      && ($current_function->{unwind} = "%rbp"))
 		|| $pc > 1) {
-		$current_function->{unwind} = "%rbp" if ($pc == 2);
 		print label::win64_args();
 	    }
 	}
