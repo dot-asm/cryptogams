@@ -501,7 +501,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
     # stack unwinding procedure compliant with DWARF specification,
     # see http://dwarfstd.org/. Besides naturally expected for this
     # script platform-specific filtering function, this module adds
-    # three auxiliary synthetic directives not recognized by [GNU]
+    # four auxiliary synthetic directives not recognized by [GNU]
     # assembler:
     #
     # - .cfi_push to annotate push instructions in prologue, which
@@ -510,6 +510,8 @@ my @pdata_seg = (".section	.pdata", ".align	4");
     # - .cfi_pop to annotate pop instructions in epilogue, which
     #   translates to .cfi_adjust_cfa_offset (if needed) and
     #   .cfi_restore;
+    # - .cfi_alloca to annotate stack pointer adjustments, which
+    #   translates to .cfi_adjust_cfa_offset as needed;
     # - [and most notably] .cfi_cfa_expression which encodes
     #   DW_CFA_def_cfa_expression and passes it to .cfi_escape as
     #   byte vector;
@@ -538,8 +540,6 @@ my @pdata_seg = (".section	.pdata", ".align	4");
     #   stable;
     # - .cfi_epilogue to denote point when all non-volatile registers
     #   are restored [and it even adds missing .cfi_restore-s];
-    # - .cfi_alloca to denote stack pointer adjustments in the prologue
-    #   after the frame pointer is set;
     #
     # Though it's not universal "miracle cure," it has its limitations.
     # Most notably .cfi_cfa_expression won't start working... For more
