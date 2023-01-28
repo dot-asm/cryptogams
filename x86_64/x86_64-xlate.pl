@@ -883,6 +883,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 					$saved_regs{$reg} = $off;
 				    } else {
 					$dir = undef;
+					$xmmlast //= $1;
 					for (my $i=$1; $i<=$xmmlast; $i++) {
 					    $saved_regs{"%xmm$i"} = $off;
 					    $off += 16;
