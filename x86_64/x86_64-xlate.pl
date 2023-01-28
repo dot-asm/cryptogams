@@ -95,6 +95,7 @@ elsif (!$gas)
     $elf=0;
     $decor="\$L\$";
 }
+my $colon= $masm ? "::" : ":";
 
 $dwarf=0 if($win64);
 
@@ -425,12 +426,17 @@ my %globals;
 		$current_function->{pc} = 0;
 		$func .= "\n.cfi_".cfi_directive::startproc()   if ($dwarf);
 		$func .= "\n	.byte	0xf3,0x0f,0x1e,0xfa\n";	# endbranch
-		if ($win64 && $current_function->{abi} eq "svr4") {
-		    my $fp = $current_function->{unwind} ? "%r11" : "%rax";
-		    $func .= "	movq	%rdi,8(%rsp)\n";
-		    $func .= "	movq	%rsi,16(%rsp)\n";
-		    $func .= "	movq	%rsp,$fp\n";
-		    $func .= "${decor}SEH_begin_$current_function->{name}:\n";
+		if ($win64) {
+		    if ($current_function->{abi} eq "svr4") {
+		        my $fp = $current_function->{unwind} ? "%r11" : "%rax";
+			$func .= "	movq	%rdi,8(%rsp)\n";
+			$func .= "	movq	%rsi,16(%rsp)\n";
+			$func .= "	movq	%rsp,$fp\n";
+			$func .= "${decor}SEH_begin_$current_function->{name}:\n";
+		    } elsif ($current_function->{unwind}) {
+			$func .= "	movq	%rsp,%r11\n";
+			$func .= "${decor}SEH_begin_$current_function->{name}:\n";
+		    }
 		}
 	    } elsif ($win64 && $current_function->{abi} eq "svr4"
 			    && $current_function->{pc} >= 0) {
@@ -443,28 +449,25 @@ my %globals;
 		       && $current_function->{pc} >= 0) {
 		$func = win64_args();
 	    }
-	    $func .= $self->{value} . ":";
-	    # Make all labels in masm global.
-	    $func .= ":" if ($masm);
+	    $func .= $self->{value} . $colon;
 	    $func;
-	} elsif ($win64 && $current_function->{abi} eq "svr4") {
+	} else {
 	    $current_function->{pc} = 0;
 	    my $func =	"$current_function->{name}" .
 			($nasm ? ":" : "\tPROC $current_function->{scope}") .
 			"\n";
-	    my $fp = $current_function->{unwind} ? "r11" : "rax";
 	    $func .= "	DB	243,15,30,250\n";	# endbranch
-	    $func .= "	mov	QWORD$PTR\[8+rsp\],rdi\t;WIN64 prologue\n";
-	    $func .= "	mov	QWORD$PTR\[16+rsp\],rsi\n";
-	    $func .= "	mov	$fp,rsp\n";
-	    $func .= "${decor}SEH_begin_$current_function->{name}:";
-	    $func .= ":" if ($masm);
-	    $func .= "\n";
-	} else {
-	    $current_function->{pc} = 0;
-	   "$current_function->{name}".
-			($nasm ? ":" : "\tPROC $current_function->{scope}").
-	   "\n	DB	243,15,30,250";			# endbranch
+	    if ($current_function->{abi} eq "svr4") {
+		my $fp = $current_function->{unwind} ? "r11" : "rax";
+		$func .= "	mov	QWORD$PTR\[8+rsp\],rdi\t;WIN64 prologue\n";
+		$func .= "	mov	QWORD$PTR\[16+rsp\],rsi\n";
+		$func .= "	mov	$fp,rsp\n";
+		$func .= "${decor}SEH_begin_$current_function->{name}${colon}\n";
+	    } elsif ($current_function->{unwind}) {
+		$func .= "	mov	r11,rsp\n";
+		$func .= "${decor}SEH_begin_$current_function->{name}${colon}\n";
+	    }
+	    $func;
 	}
     }
 }
@@ -926,59 +929,77 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	    my $fname = $current_function->{name};
 
 	    if ($ret eq ".endprolog") {
-		$saved_regs{"%rdi"} = 0;	# relative to CFA, remember?
-		$saved_regs{"%rsi"} = 8;
+		if ($current_function->{abi} eq "svr4") {
+		    $saved_regs{"%rdi"} = 0;	# relative to CFA, remember?
+		    $saved_regs{"%rsi"} = 8;
+		}
 
 		push @pdata_seg,
 		    ".rva	.LSEH_begin_${fname}",
 		    ".rva	.LSEH_body_${fname}",
 		    ".rva	.LSEH_info_${fname}_prologue","";
+		push @xdata_seg,
+		    ".LSEH_info_${fname}_prologue:";
 		if ($current_function->{unwind} eq "%rbp") {
-		    push @xdata_seg,
-		    ".LSEH_info_${fname}_prologue:",
+		    if ($current_function->{abi} eq "svr4") {
+			push @xdata_seg,
 			".byte	1,4,6,0x05",	# 6 unwind codes, %rbp is FP
 			".byte	4,0x74,2,0",	# %rdi at 16(%rsp)
 			".byte	4,0x64,3,0",	# %rsi at 24(%rsp)
 			".byte	4,0x53",	# mov	%rsp, %rbp
 			".byte	1,0x50",	# push	%rbp
-		    ;
+			;
+		    } else {
+			push @xdata_seg,
+			".byte	1,4,2,0x05",	# 2 unwind codes, %rbp is FP
+			".byte	4,0x53",	# mov	%rsp, %rbp
+			".byte	1,0x50",	# push	%rbp
+			;
+		    }
 		} else {
-		    push @xdata_seg,
-		    ".LSEH_info_${fname}_prologue:",
+		    if ($current_function->{abi} eq "svr4") {
+			push @xdata_seg,
 			".byte	1,0,5,0x0b",	# 5 unwind codes, %r11 is FP
 			".byte	0,0x74,1,0",	# %rdi at 8(%rsp)
 			".byte	0,0x64,2,0",	# %rsi at 16(%rsp)
 			".byte	0,0xb3",	# set frame pointer
 			".byte	0,0"		# padding
-		    ;
+			;
+		    } else {
+			push @xdata_seg,
+			".byte	1,0,1,0x0b",	# 1 unwind code, %r11 is FP
+			".byte	0,0xb3",	# set frame pointer
+			".byte	0,0"		# padding
+			;
+		    }
 		}
 		push @pdata_seg,
 		    ".rva	.LSEH_body_${fname}",
 		    ".rva	.LSEH_epilogue_${fname}",
 		    ".rva	.LSEH_info_${fname}_body","";
 		push @xdata_seg,".LSEH_info_${fname}_body:", xdata();
-		$ret  = "${decor}SEH_body_${fname}:";
-		$ret .= ":" if ($masm); $ret .= "\n";
+		$ret  = "${decor}SEH_body_${fname}${colon}\n";
 	    } elsif ($ret eq ".epilogue") {
 		%saved_regs = ();
-		$saved_regs{"%rdi"} = 0;	# relative to CFA, remember?
-		$saved_regs{"%rsi"} = 8;
 		$cfa_rsp = $cfa_off;
+		$ret = "${decor}SEH_epilogue_${fname}${colon}\n";
+		if ($current_function->{abi} eq "svr4") {
+		    $saved_regs{"%rdi"} = 0;	# relative to CFA, remember?
+		    $saved_regs{"%rsi"} = 8;
 
-		push @pdata_seg,
-		    ".rva	.LSEH_epilogue_${fname}",
-		    ".rva	.LSEH_end_${fname}",
-		    ".rva	.LSEH_info_${fname}_epilogue","";
-		push @xdata_seg,".LSEH_info_${fname}_epilogue:", xdata(), "";
-		$ret  = "${decor}SEH_epilogue_${fname}:";
-		$ret .= ":" if ($masm); $ret .= "\n";
-		if ($gas) {
-		    $ret .= "	mov	".(0-$off)."(%$reg),%rdi\n";
-		    $ret .= "	mov	".(8-$off)."(%$reg),%rsi\n";
-		} else {
-		    $ret .= "	mov	rdi,QWORD$PTR\[".(0-$off)."+$reg\]";
-		    $ret .= "	;WIN64 epilogue\n";
-		    $ret .= "	mov	rsi,QWORD$PTR\[".(8-$off)."+$reg\]\n";
+		    push @pdata_seg,
+			".rva	.LSEH_epilogue_${fname}",
+			".rva	.LSEH_end_${fname}",
+			".rva	.LSEH_info_${fname}_epilogue","";
+		    push @xdata_seg,".LSEH_info_${fname}_epilogue:", xdata(), "";
+		    if ($gas) {
+			$ret .= "	mov	".(0-$off)."(%$reg),%rdi\n";
+			$ret .= "	mov	".(8-$off)."(%$reg),%rsi\n";
+		    } else {
+			$ret .= "	mov	rdi,QWORD$PTR\[".(0-$off)."+$reg\]";
+			$ret .= "	;WIN64 epilogue\n";
+			$ret .= "	mov	rsi,QWORD$PTR\[".(8-$off)."+$reg\]\n";
+		    }
 		}
 	    }
 	    return $ret;
@@ -1022,6 +1043,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 					undef $current_function;
 					$current_function->{name} = $sym;
 					$current_function->{scope} = defined($globals{$sym})?"PUBLIC":"PRIVATE";
+					$current_function->{unwind} = $unwind;
 					$current_function->{pc} = -1;
 				    }
 				    $$line =~ s/\@abi\-omnipotent/\@function/;
@@ -1146,8 +1168,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 		/\.size/    && do { if (defined($current_function)) {
 					undef $self->{value};
 					if ($current_function->{abi} eq "svr4") {
-					    $self->{value}="${decor}SEH_end_$current_function->{name}:";
-					    $self->{value}.=":\n" if($masm);
+					    $self->{value}="${decor}SEH_end_$current_function->{name}${colon}\n";
 					}
 					$self->{value}.="$current_function->{name}\tENDP" if($masm && $current_function->{name});
 					undef $current_function;
@@ -1512,8 +1533,8 @@ sub process {
 
 while(<>) { process($_); }
 
-map { process($_) } @pdata_seg if ($win64);
-map { process($_) } @xdata_seg if ($win64);
+map { process($_) } @pdata_seg if ($win64 && $#pdata_seg>1);
+map { process($_) } @xdata_seg if ($win64 && $#xdata_seg>1);
 
 # platform-specific epilogue
 if ($masm) {
