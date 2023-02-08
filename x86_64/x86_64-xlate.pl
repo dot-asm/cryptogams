@@ -717,9 +717,17 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	    $len += $#{@dat[-1]}+1;
 	}
 
+	my $fp_info = 0;
+
 	# allocate stack frame
 	if ($cfa_rsp < -8) {
 	    my $offset = -8 - $cfa_rsp;
+	    if ($cfa_reg ne "%rsp" && $saved_regs{$cfa_reg} == -16) {
+		$fp_info = $WIN64_reg_idx{$cfa_reg};
+		push @dat, [0,$fp_info<<4];		# UWOP_PUSH_NONVOL
+		$len += $#{@dat[-1]}+1;
+		$offset -= 8;
+	    }
 	    if ($offset <= 128) {
 		$offset = ($offset - 8) >> 3;
 		push @dat, [0,$offset<<4|2];		# UWOP_ALLOC_SMALL
@@ -729,11 +737,16 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 		push @dat, [0,0x11,unpack("C4",pack("V",$offset))];
 	    }
 	    $len += $#{@dat[-1]}+1;
+	    if ($fp_info) {
+		push @dat, [0,($fp_info<<4)|3];		# UWOP_SET_FPREG
+		$len += $#{@dat[-1]}+1;
+		($offset > 240 or $offset&0xf) and die "invalid FP offset $offset";
+		$fp_info |= $offset&-16;
+	    }
 	}
 
-	# set up frame pointer
-	my $fp_info = 0;
-	if ($cfa_reg ne "%rsp") {
+	# set up frame pointer [if not set already]
+	if ($cfa_reg ne "%rsp" && $fp_info == 0) {
 	    $fp_info = $WIN64_reg_idx{$cfa_reg};
 	    if (defined(my $offset = $saved_regs{$cfa_reg})) {
 		$offset -= $cfa_rsp;
@@ -741,7 +754,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 		$fp_info |= $offset&-16;
 		savereg($cfa_reg, $offset);
 	    }
-	    push @dat, [0,($WIN64_reg_idx{$cfa_reg}<<4)|3]; # UWOP_SET_FPREG
+	    push @dat, [0,($fp_info<<4)&0xff|3];	# UWOP_SET_FPREG
 	    $len += $#{@dat[-1]}+1;
 	}
 
