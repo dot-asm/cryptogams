@@ -729,8 +729,8 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 		$offset -= 8;
 	    }
 	    if ($offset <= 128) {
-		$offset = ($offset - 8) >> 3;
-		push @dat, [0,$offset<<4|2];		# UWOP_ALLOC_SMALL
+		my $alloc = ($offset - 8) >> 3;
+		push @dat, [0,$alloc<<4|2];		# UWOP_ALLOC_SMALL
 	    } elsif ($offset < 0x80000) {
 		push @dat, [0,0x01,unpack("C2",pack("v",$offset>>3))];
 	    } else {
