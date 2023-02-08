@@ -516,18 +516,13 @@ $code.=<<___ if ($win64);
 	movaps	-0x40(%rbp),%xmm15
 ___
 $code.=<<___;
-	mov	-40(%rbp),%r15
-.cfi_restore	%r15
-	mov	-32(%rbp),%r14
-.cfi_restore	%r14
-	mov	-24(%rbp),%r13
-.cfi_restore	%r13
-	mov	-16(%rbp),%r12
-.cfi_restore	%r12
-	mov	-8(%rbp),%rbx
-.cfi_restore	%rbx
-	mov	%rbp,%rsp		# restore %rsp
-.cfi_def_cfa	%rsp,16
+	mov	-0x28(%rbp),%r15
+	mov	-0x20(%rbp),%r14
+	mov	-0x18(%rbp),%r13
+	mov	-0x10(%rbp),%r12
+	mov	-0x08(%rbp),%rbx
+	mov	%rbp,%rsp			# restore %rsp
+.cfi_def_cfa_register	%rsp
 .Lgcm_dec_abort:
 	pop	%rbp
 .cfi_pop	%rbp
@@ -917,18 +912,13 @@ $code.=<<___ if ($win64);
 	movaps	-0x40(%rbp),%xmm15
 ___
 $code.=<<___;
-	mov	-40(%rbp),%r15
-.cfi_restore	%r15
-	mov	-32(%rbp),%r14
-.cfi_restore	%r14
-	mov	-24(%rbp),%r13
-.cfi_restore	%r13
-	mov	-16(%rbp),%r12
-.cfi_restore	%r12
-	mov	-8(%rbp),%rbx
-.cfi_restore	%rbx
-	mov	%rbp,%rsp		# restore %rsp
-.cfi_def_cfa	%rsp,16
+	mov	-0x28(%rbp),%r15
+	mov	-0x20(%rbp),%r14
+	mov	-0x18(%rbp),%r13
+	mov	-0x10(%rbp),%r12
+	mov	-0x08(%rbp),%rbx
+	mov	%rbp,%rsp			# restore %rsp
+.cfi_def_cfa_register	%rsp
 .Lgcm_enc_abort:
 	pop	%rbp
 .cfi_pop	%rbp
