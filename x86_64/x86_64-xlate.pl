@@ -770,6 +770,9 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	# generate 4-byte descriptor
 	push @ret, ".byte	1,0,".($len/2).",$fp_info";
 	$len += 4;
+	# keep objdump happy, pad to 4*n and add a 32-bit zero
+	unshift @dat, [(0)x((-$len)&3)] if ($len&3);	$len += (-$len)&3;
+	unshift @dat, [(0)x4];				$len += 4;
 	# pad to 8*n
 	unshift @dat, [(0)x((-$len)&7)] if ($len&7);
 	# emit data
@@ -961,12 +964,14 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 			".byte	4,0x64,3,0",	# %rsi at 24(%rsp)
 			".byte	4,0x53",	# mov	%rsp, %rbp
 			".byte	1,0x50",	# push	%rbp
+			".long	0,0"		# pad to keep objdump happy
 			;
 		    } else {
 			push @xdata_seg,
 			".byte	1,4,2,0x05",	# 2 unwind codes, %rbp is FP
 			".byte	4,0x53",	# mov	%rsp, %rbp
 			".byte	1,0x50",	# push	%rbp
+			".long	0,0"		# pad to keep objdump happy
 			;
 		    }
 		} else {
@@ -976,13 +981,15 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 			".byte	0,0x74,1,0",	# %rdi at 8(%rsp)
 			".byte	0,0x64,2,0",	# %rsi at 16(%rsp)
 			".byte	0,0xb3",	# set frame pointer
-			".byte	0,0"		# padding
+			".byte	0,0",		# padding
+			".long	0,0"		# pad to keep objdump happy
 			;
 		    } else {
 			push @xdata_seg,
 			".byte	1,0,1,0x0b",	# 1 unwind code, %r11 is FP
 			".byte	0,0xb3",	# set frame pointer
-			".byte	0,0"		# padding
+			".byte	0,0",		# padding
+			".long	0,0"		# pad to keep objdump happy
 			;
 		    }
 		}
