@@ -771,8 +771,8 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	push @ret, ".byte	1,0,".($len/2).",$fp_info";
 	$len += 4;
 	# keep objdump happy, pad to 4*n and add a 32-bit zero
-	unshift @dat, [(0)x((-$len)&3)] if ($len&3);	$len += (-$len)&3;
-	unshift @dat, [(0)x4];				$len += 4;
+	unshift @dat, [(0)x(((-$len)&3)+4)];
+	$len += $#{@dat[0]}+1;
 	# pad to 8*n
 	unshift @dat, [(0)x((-$len)&7)] if ($len&7);
 	# emit data
@@ -945,7 +945,9 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	    my $fname = $current_function->{name};
 
 	    if ($ret eq ".endprolog") {
+		$ret = "";
 		if ($current_function->{abi} eq "svr4") {
+		    $ret .= label::win64_args();
 		    $saved_regs{"%rdi"} = 0;	# relative to CFA, remember?
 		    $saved_regs{"%rsi"} = 8;
 		}
@@ -998,7 +1000,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 		    ".rva	.LSEH_epilogue_${fname}",
 		    ".rva	.LSEH_info_${fname}_body","";
 		push @xdata_seg,".LSEH_info_${fname}_body:", xdata();
-		$ret  = "${decor}SEH_body_${fname}${colon}\n";
+		$ret .= "${decor}SEH_body_${fname}${colon}\n";
 	    } elsif ($ret eq ".epilogue") {
 		%saved_regs = ();
 		$cfa_rsp = $cfa_off;
