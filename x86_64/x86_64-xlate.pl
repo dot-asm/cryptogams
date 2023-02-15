@@ -737,25 +737,24 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 		push @dat, [0,0x11,unpack("C4",pack("V",$offset))];
 	    }
 	    $len += $#{@dat[-1]}+1;
-	    if ($fp_info) {
-		push @dat, [0,($fp_info<<4)|3];		# UWOP_SET_FPREG
-		$len += $#{@dat[-1]}+1;
-		($offset > 240 or $offset&0xf) and die "invalid FP offset $offset";
-		$fp_info |= $offset&-16;
-	    }
 	}
 
-	# set up frame pointer [if not set already]
+	# save frame pointer [if not pushed already]
 	if ($cfa_reg ne "%rsp" && $fp_info == 0) {
 	    $fp_info = $WIN64_reg_idx{$cfa_reg};
 	    if (defined(my $offset = $saved_regs{$cfa_reg})) {
 		$offset -= $cfa_rsp;
-		($offset > 240 or $offset&0xf) and die "invalid FP offset $offset";
-		$fp_info |= $offset&-16;
 		savereg($cfa_reg, $offset);
 	    }
-	    push @dat, [0,($fp_info<<4)&0xff|3];	# UWOP_SET_FPREG
+	}
+
+	# set up frame pointer
+	if ($fp_info) {
+	    push @dat, [0,($fp_info<<4)|3];		# UWOP_SET_FPREG
 	    $len += $#{@dat[-1]}+1;
+	    my $fp_off = $cfa_off - $cfa_rsp;
+	    ($fp_off > 240 or $fp_off&0xf) and die "invalid FP offset $fp_off";
+	    $fp_info |= $fp_off&-16;
 	}
 
 	# save registers
@@ -1876,9 +1875,8 @@ close STDOUT;
 #	and	\$-64,%rsp
 #	...
 #	mov	-8(%rbp),%rbx
-# .cfi_restore	%rbx
 #	mov	%rbp,%rsp
-# .cfi_def_cfa	%rsp,16
+# .cfi_def_cfa_regiser	%rsp
 #	pop	%rbp		# recognized by Windows
 # .cfi_pop	%rbp
 # .cfi_epilogue
