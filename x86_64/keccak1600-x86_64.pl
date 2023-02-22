@@ -77,7 +77,7 @@ my @rhotates = ([  0,  1, 62, 28, 27 ],
 $code.=<<___;
 .text
 
-.type	__KeccakF1600,\@function
+.type	__KeccakF1600,\@abi-omnipotent
 .align	32
 __KeccakF1600:
 	mov	$A[4][0](%rdi),@C[0]
@@ -341,7 +341,7 @@ $code.=<<___;
 .size	__KeccakF1600,.-__KeccakF1600
 
 .globl	KeccakF1600
-.type	KeccakF1600,\@function
+.type	KeccakF1600,\@function,1,"unwind"
 .align	32
 KeccakF1600:
 .cfi_startproc
@@ -360,7 +360,8 @@ KeccakF1600:
 
 	lea	100(%rdi),%rdi		# size optimization
 	sub	\$200,%rsp
-.cfi_adjust_cfa_offset	200
+.cfi_alloca	200
+.cfi_end_prologue
 
 	notq	$A[0][1](%rdi)
 	notq	$A[0][2](%rdi)
@@ -382,21 +383,16 @@ KeccakF1600:
 	notq	$A[4][0](%rdi)
 	lea	-100(%rdi),%rdi		# preserve A[][]
 
-	add	\$200,%rsp
-.cfi_adjust_cfa_offset	-200
-
-	pop	%r15
-.cfi_pop	%r15
-	pop	%r14
-.cfi_pop	%r14
-	pop	%r13
-.cfi_pop	%r13
-	pop	%r12
-.cfi_pop	%r12
-	pop	%rbp
-.cfi_pop	%rbp
-	pop	%rbx
-.cfi_pop	%rbx
+	lea	248(%rsp),%r11
+.cfi_def_cfa	%r11,8
+	mov	-48(%r11),%r15
+	mov	-40(%r11),%r14
+	mov	-32(%r11),%r13
+	mov	-24(%r11),%r12
+	mov	-16(%r11),%rbp
+	mov	-8(%r11),%rbx
+	lea	(%r11),%rsp
+.cfi_epilogue
 	ret
 .cfi_endproc
 .size	KeccakF1600,.-KeccakF1600
@@ -406,7 +402,7 @@ ___
      ($A_flat,$inp) = ("%r8","%r9");
 $code.=<<___;
 .globl	SHA3_absorb
-.type	SHA3_absorb,\@function
+.type	SHA3_absorb,\@function,4,"unwind"
 .align	32
 SHA3_absorb:
 .cfi_startproc
@@ -425,7 +421,8 @@ SHA3_absorb:
 
 	lea	100(%rdi),%rdi		# size optimization
 	sub	\$232,%rsp
-.cfi_adjust_cfa_offset	232
+.cfi_alloca	232
+.cfi_end_prologue
 
 	mov	%rsi,$inp
 	lea	100(%rsp),%rsi		# size optimization
@@ -476,21 +473,16 @@ SHA3_absorb:
 	notq	$A[3][2](%rdi)
 	notq	$A[4][0](%rdi)
 
-	add	\$232,%rsp
-.cfi_adjust_cfa_offset	-232
-
-	pop	%r15
-.cfi_pop	%r15
-	pop	%r14
-.cfi_pop	%r14
-	pop	%r13
-.cfi_pop	%r13
-	pop	%r12
-.cfi_pop	%r12
-	pop	%rbp
-.cfi_pop	%rbp
-	pop	%rbx
-.cfi_pop	%rbx
+	lea	280(%rsp),%r11
+.cfi_def_cfa	%r11,8
+	mov	-48(%r11),%r15
+	mov	-40(%r11),%r14
+	mov	-32(%r11),%r13
+	mov	-24(%r11),%r12
+	mov	-16(%r11),%rbp
+	mov	-8(%r11),%rbx
+	lea	(%r11),%rsp
+.cfi_epilogue
 	ret
 .cfi_endproc
 .size	SHA3_absorb,.-SHA3_absorb
@@ -501,7 +493,7 @@ ___
 
 $code.=<<___;
 .globl	SHA3_squeeze
-.type	SHA3_squeeze,\@function
+.type	SHA3_squeeze,\@function,4,"unwind"
 .align	32
 SHA3_squeeze:
 .cfi_startproc
@@ -511,6 +503,9 @@ SHA3_squeeze:
 .cfi_push	%r13
 	push	%r14
 .cfi_push	%r14
+	sub	\$32,%rsp		# Windows thing
+.cfi_alloca	32
+.cfi_end_prologue
 
 	shr	\$3,%rcx
 	mov	$A_flat,%r8
@@ -534,6 +529,7 @@ SHA3_squeeze:
 	sub	\$1,%rcx		# bsz--
 	jnz	.Loop_squeeze
 
+	mov	%rdi,%rcx		# Windows thing
 	call	KeccakF1600
 	mov	$A_flat,%r8
 	mov	$bsz,%rcx
@@ -546,12 +542,12 @@ SHA3_squeeze:
 	.byte	0xf3,0xa4		# rep	movsb
 
 .Ldone_squeeze:
-	pop	%r14
-.cfi_pop	%r14
-	pop	%r13
-.cfi_pop	%r13
-	pop	%r12
-.cfi_pop	%r13
+	mov	32(%rsp),%r14
+	mov	40(%rsp),%r13
+	mov	48(%rsp),%r12
+	add	\$56,%rsp
+.cfi_alloca	-56
+.cfi_epilogue
 	ret
 .cfi_endproc
 .size	SHA3_squeeze,.-SHA3_squeeze
@@ -594,6 +590,7 @@ foreach (split("\n",$code)) {
 	# Below replacement results in 11.2 on Sandy Bridge, 9.4 on
 	# Haswell, but it hurts other processors by up to 2-3-4x...
 	#s/rol\s+(\$[0-9]+),(%[a-z][a-z0-9]+)/shld\t$1,$2,$2/;
+
 	# Below replacement results in 9.3 on Haswell [as well as
 	# on Ryzen, i.e. it *hurts* Ryzen]...
 	#s/rol\s+\$([0-9]+),(%[a-z][a-z0-9]+)/rorx\t\$64-$1,$2,$2/;
