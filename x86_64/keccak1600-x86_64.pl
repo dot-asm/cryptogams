@@ -37,6 +37,7 @@
 # Sledgehammer		13.3
 # Bulldozer		16.5
 # Ryzen			8.8
+# Zen 4			7.6
 #
 # (*)	Corresponds to SHA3-256. Improvement over compiler-generate
 #	varies a lot, most commont coefficient is 15% in comparison to

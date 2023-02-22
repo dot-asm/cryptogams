@@ -23,6 +23,7 @@
 # Skylake-X		6.4/+47%
 # Ice Lake		6.4/+34%
 # Rocket Lake		6.6/+30%
+# Zen 4			7.0/+8%
 #
 # (*)	Corresponds to SHA3-256. Percentage after slash is improvement
 #	coefficient in comparison to scalar keccak1600-x86_64.pl.

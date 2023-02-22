@@ -110,6 +110,7 @@ my @A_jagged = ([0,0], [1,0], [1,1], [1,2], [1,3],	# [0][0..4]
 # Ice Lake		7.8/+10%
 # Rocket Lake		8.6/+0%
 # Ryzen			17(**)
+# Zen 4			7.9/-4%
 #
 # (*)	Corresponds to SHA3-256. Percentage after slash is improvement
 #	coefficient in comparison to scalar keccak1600-x86_64.pl.

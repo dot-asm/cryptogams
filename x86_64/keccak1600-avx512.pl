@@ -27,6 +27,7 @@
 # Skylake-X		5.7
 # Ice Lake		5.7
 # Rocket Lake		5.8
+# Zen 4			8.3
 #
 # (*)	Corresponds to SHA3-256.
 
