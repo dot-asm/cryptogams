@@ -1453,7 +1453,10 @@ my $endbr64 = sub {
 
 ########################################################################
 
+my $preproc_prefix = "#";
+
 if ($nasm) {
+    $preproc_prefix = "%";
     print <<___;
 default	rel
 %define XMMWORD
@@ -1461,6 +1464,7 @@ default	rel
 %define ZMMWORD
 ___
 } elsif ($masm) {
+    $preproc_prefix = "";
     print <<___;
 OPTION	DOTNAME
 ___
@@ -1470,6 +1474,11 @@ sub process {
     my $line = shift;
 
     $line =~ s|\R$||;		# Better chomp
+
+    if ($line =~ m/^#\s*(if|elif|else|endif)(.*)/) {	# pass through preproc
+	print $preproc_prefix,$1,$2,"\n";
+	next;
+    }
 
     $line =~ s|[#!].*$||;	# get rid of asm-style comments...
     $line =~ s|/\*.*\*/||;	# ... and C-style comments...
