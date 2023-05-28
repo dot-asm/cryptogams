@@ -1048,9 +1048,9 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	    $$line = substr($$line,@+[0]); $$line =~ s/^\s+//;
 
 	    SWITCH: for ($dir) {
-		/\.global|\.globl|\.extern/
-			    && do { $globals{$$line} = $prefix . $$line;
-				    $$line = $globals{$$line} if ($prefix);
+		/\.global|\.globl|\.extern|\.comm/
+			    && do { $$line =~ s/([_a-z][_a-z0-9\$]*)/$prefix\1/gi;
+				    $globals{$1} = $prefix.$1 if ($1);
 				    last;
 				  };
 		/\.type/    && do { my ($sym,$type,$narg,$unwind) = split(',',$$line);
@@ -1120,7 +1120,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 		    if    ($flavour eq "macosx")  { $self->{value} = ".private_extern\t$prefix$$line"; }
 		    elsif ($flavour eq "mingw64") { $self->{value} = ""; }
 		} elsif ($dir =~ /\.comm/) {
-		    $self->{value} = "$dir\t$prefix$$line";
+		    $self->{value} = "$dir\t$line";
 		    $self->{value} =~ s|,([0-9]+),([0-9]+)$|",$1,".log($2)/log(2)|e if ($flavour eq "macosx");
 		}
 		$$line = "";
