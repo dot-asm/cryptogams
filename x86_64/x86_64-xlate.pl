@@ -835,6 +835,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 				if ($cfa_reg eq "%rsp") {
 				    $cfa_rsp -= $val;
 				}
+				$$line = "$val";
 				last;
 			      };
 	    /alloca/	&& do { $dir = undef;
@@ -844,6 +845,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 				    $cfa_off -= $val;
 				    $dir = "adjust_cfa_offset";
 				}
+				$$line = "$val";
 				last;
 			      };
 	    /def_cfa/	&& do {	if ($$line =~ /(%r\w+)\s*(?:,\s*(.+))?/) {
