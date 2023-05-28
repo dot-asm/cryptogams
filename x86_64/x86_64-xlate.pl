@@ -265,7 +265,7 @@ my %globals;
     sub out {
 	my ($self, $sz) = @_;
 
-	$self->{label} =~ s/([_a-z][_a-z0-9]*)/$globals{$1} or $1/gei;
+	$self->{label} =~ s/([_a-z][_a-z0-9\$]*)/$globals{$1} or $1/gei;
 	$self->{label} =~ s/\.L/$decor/g;
 
 	# Silently convert all EAs to 64-bit. This is required for
@@ -383,7 +383,7 @@ my %globals;
 	my	$self = {};
 	my	$ret;
 
-	if ($$line =~ /(^[\.\w]+)\:/) {
+	if ($$line =~ /(^[\.\w\$]+)\:/) {
 	    bless $self,$class;
 	    $self->{value} = $1;
 	    $ret = $self;
@@ -484,7 +484,7 @@ my %globals;
 	    $$line = substr($$line,@+[0]); $$line =~ s/^\s+//;
 
 	    $self->{value} =~ s/\@PLT// if (!$elf);
-	    $self->{value} =~ s/([_a-z][_a-z0-9]*)/$globals{$1} or $1/gei;
+	    $self->{value} =~ s/([_a-z][_a-z0-9\$]*)/$globals{$1} or $1/gei;
 	    $self->{value} =~ s/\.L/$decor/g;
 	    $self->{opcode} = $opcode;
 	}
@@ -1080,7 +1080,7 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 				    last;
 				  };
 		/\.rva|\.long|\.quad/
-			    && do { $$line =~ s/([_a-z][_a-z0-9]*)/$globals{$1} or $1/gei;
+			    && do { $$line =~ s/([_a-z][_a-z0-9\$]*)/$globals{$1} or $1/gei;
 				    $$line =~ s/\.L/$decor/g;
 				    last;
 				  };
