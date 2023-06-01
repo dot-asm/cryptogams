@@ -428,7 +428,7 @@ my %globals;
 		$func .= "\n	.byte	0xf3,0x0f,0x1e,0xfa\n";	# endbranch
 		if ($win64) {
 		    if ($current_function->{abi} eq "svr4") {
-		        my $fp = $current_function->{unwind} ? "%r11" : "%rax";
+			my $fp = $current_function->{unwind} ? "%r11" : "%rax";
 			$func .= "	movq	%rdi,8(%rsp)\n";
 			$func .= "	movq	%rsi,16(%rsp)\n";
 			$func .= "	movq	%rsp,$fp\n";
@@ -1478,6 +1478,10 @@ sub process {
     $line =~ s|\R$||;		# Better chomp
 
     if ($line =~ m/^#\s*(if|elif|else|endif)(.*)/) {	# pass through preproc
+	if ($win64 && $current_function->{abi} eq "svr4"
+		   && $current_function->{narg} >= 0) {
+	    print label::win64_args();
+	}
 	print $preproc_prefix,$1,$2,"\n";
 	next;
     }
