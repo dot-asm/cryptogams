@@ -118,8 +118,8 @@ ${prefix}_set_encrypt_key:
 .Lenc_key:
 ___
 $code.=<<___	if ($flavour =~ /64/);
-	stp	x29,x30,[sp,#-16]!
-	add	x29,sp,#0
+	stp	c29,c30,[csp,#-2*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
 ___
 $code.=<<___;
 	mov	$ptr,#-1
@@ -194,7 +194,7 @@ $code.=<<___;
 	veor	$in0,$in0,$tmp
 	veor	$in0,$in0,$key
 	vst1.32	{$in0},[$out]
-	add	$out,$out,#0x50
+	cadd	$out,$out,#0x50
 
 	mov	$rounds,#10
 	b	.Ldone
@@ -231,7 +231,7 @@ $code.=<<___;
 	b.ne	.Loop192
 
 	mov	$rounds,#12
-	add	$out,$out,#0x20
+	cadd	$out,$out,#0x20
 	b	.Ldone
 
 .align	4
@@ -278,7 +278,7 @@ $code.=<<___;
 
 .Lenc_key_abort:
 	mov	x0,$ptr			// return value
-	`"ldr	x29,[sp],#16"		if ($flavour =~ /64/)`
+	`"ldr	c29,[csp],#2*__SIZEOF_POINTER__" if ($flavour =~ /64/)`
 	ret
 .size	${prefix}_set_encrypt_key,.-${prefix}_set_encrypt_key
 
@@ -289,8 +289,8 @@ ${prefix}_set_decrypt_key:
 ___
 $code.=<<___	if ($flavour =~ /64/);
 	.inst	0xd503233f		// paciasp
-	stp	x29,x30,[sp,#-16]!
-	add	x29,sp,#0
+	stp	c29,c30,[csp,#-2*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
 ___
 $code.=<<___	if ($flavour !~ /64/);
 	stmdb	sp!,{r4,lr}
@@ -301,9 +301,9 @@ $code.=<<___;
 	cmp	x0,#0
 	b.ne	.Ldec_key_abort
 
-	sub	$out,$out,#240		// restore original $out
+	csub	$out,$out,#240		// restore original $out
 	mov	x4,#-16
-	add	$inp,$out,x12,lsl#4	// end of key schedule
+	cadd	$inp,$out,x12,lsl#4	// end of key schedule
 
 	vld1.32	{v0.16b},[$out]
 	vld1.32	{v1.16b},[$inp]
@@ -331,7 +331,7 @@ $code.=<<___	if ($flavour !~ /64/);
 	ldmia	sp!,{r4,pc}
 ___
 $code.=<<___	if ($flavour =~ /64/);
-	ldp	x29,x30,[sp],#16
+	ldp	c29,c30,[csp],#2*__SIZEOF_POINTER__
 	.inst	0xd50323bf		// autiasp
 	ret
 ___
@@ -399,8 +399,8 @@ $code.=<<___;
 ${prefix}_cbc_encrypt:
 ___
 $code.=<<___	if ($flavour =~ /64/);
-	stp	x29,x30,[sp,#-16]!
-	add	x29,sp,#0
+	stp	c29,c30,[csp,#-2*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
 ___
 $code.=<<___	if ($flavour !~ /64/);
 	mov	ip,sp
@@ -422,14 +422,14 @@ $code.=<<___;
 
 	vld1.32	{q8-q9},[$key]		// load key schedule...
 	sub	$rounds,$rounds,#6
-	add	$key_,$key,x5,lsl#4	// pointer to last 7 round keys
+	cadd	$key_,$key,x5,lsl#4	// pointer to last 7 round keys
 	sub	$rounds,$rounds,#2
 	vld1.32	{q10-q11},[$key_],#32
 	vld1.32	{q12-q13},[$key_],#32
 	vld1.32	{q14-q15},[$key_],#32
 	vld1.32	{$rndlast},[$key_]
 
-	add	$key_,$key,#32
+	cadd	$key_,$key,#32
 	mov	$cnt,$rounds
 	b.eq	.Lcbc_dec
 
@@ -439,13 +439,13 @@ $code.=<<___;
 	b.eq	.Lcbc_enc128
 
 	vld1.32	{$in0-$in1},[$key_]
-	add	$key_,$key,#16
-	add	$key4,$key,#16*4
-	add	$key5,$key,#16*5
+	cadd	$key_,$key,#16
+	cadd	$key4,$key,#16*4
+	cadd	$key5,$key,#16*5
 	aese	$dat,q8
 	aesmc	$dat,$dat
-	add	$key6,$key,#16*6
-	add	$key7,$key,#16*7
+	cadd	$key6,$key,#16*6
+	cadd	$key7,$key,#16*7
 	b	.Lenter_cbc_enc
 
 .align	4
@@ -625,7 +625,7 @@ $code.=<<___	if ($flavour =~ /64/);
 	aesd	$dat4,q9
 	aesimc	$dat4,$dat4
 	 csel	x6,xzr,$len,gt		// borrow x6, $cnt, "gt" is not typo
-	 mov	$key_,$key
+	 cmov	$key_,$key
 
 	aesd	$dat0,q10
 	aesimc	$dat0,$dat0
@@ -637,7 +637,7 @@ $code.=<<___	if ($flavour =~ /64/);
 	aesimc	$dat3,$dat3
 	aesd	$dat4,q10
 	aesimc	$dat4,$dat4
-	 add	$inp,$inp,x6		// $inp is adjusted in such way that
+	 cadd	$inp,$inp,x6		// $inp is adjusted in such way that
 					// at exit from the loop $dat1-$dat4
 					// are loaded with last "words"
 	 add	x6,$len,#0x60		// because .Lcbc_tail4x
@@ -788,11 +788,11 @@ $code.=<<___;
 	aesd	$dat2,q9
 	aesimc	$dat2,$dat2
 	 veor	$tmp2,$in1,$rndlast
-	 add	$inp,$inp,x6		// $inp is adjusted in such way that
+	 cadd	$inp,$inp,x6		// $inp is adjusted in such way that
 					// at exit from the loop $dat1-$dat2
 					// are loaded with last "words"
 	 vorr	$ivec,$in2,$in2
-	 mov	$key_,$key
+	 cmov	$key_,$key
 	aesd	$dat0,q12
 	aesimc	$dat0,$dat0
 	aesd	$dat1,q12
@@ -897,7 +897,7 @@ $code.=<<___	if ($flavour !~ /64/);
 	ldmia	sp!,{r4-r8,pc}
 ___
 $code.=<<___	if ($flavour =~ /64/);
-	ldr	x29,[sp],#16
+	ldr	c29,[csp],#2*__SIZEOF_POINTER__
 	ret
 ___
 $code.=<<___;
@@ -927,8 +927,8 @@ $code.=<<___;
 ${prefix}_ctr32_encrypt_blocks:
 ___
 $code.=<<___	if ($flavour =~ /64/);
-	stp		x29,x30,[sp,#-16]!
-	add		x29,sp,#0
+	stp		c29,c30,[csp,#-2*__SIZEOF_POINTER__]!
+	add		c29,csp,#0
 ___
 $code.=<<___	if ($flavour !~ /64/);
 	mov		ip,sp
@@ -946,12 +946,12 @@ $code.=<<___;
 	sub		$rounds,$rounds,#4
 	mov		$step,#16
 	cmp		$len,#2
-	add		$key_,$key,x5,lsl#4	// pointer to last 5 round keys
+	cadd		$key_,$key,x5,lsl#4	// pointer to last 5 round keys
 	sub		$rounds,$rounds,#2
 	vld1.32		{q12-q13},[$key_],#32
 	vld1.32		{q14-q15},[$key_],#32
 	vld1.32		{$rndlast},[$key_]
-	add		$key_,$key,#32
+	cadd		$key_,$key,#32
 	mov		$cnt,$rounds
 	cclr		$step,lo
 #ifndef __ARMEB__
@@ -1012,7 +1012,7 @@ $code.=<<___	if ($flavour =~ /64/);
 	vld1.32		{q9},[$key_],#16
 	b.gt		.Loop5x_ctr32
 
-	mov		$key_,$key
+	cmov		$key_,$key
 	aese		$dat0,q8
 	aesmc		$dat0,$dat0
 	aese		$dat1,q8
@@ -1173,7 +1173,7 @@ $code.=<<___;
 	aese		$tmp1,q9
 	aesmc		$tmp1,$tmp1
 	 vld1.8		{$in2},[$inp],#16
-	 mov		$key_,$key
+	 cmov		$key_,$key
 	aese		$dat2,q9
 	aesmc		$tmp2,$dat2
 	aese		$tmp0,q12
@@ -1284,7 +1284,7 @@ $code.=<<___	if ($flavour !~ /64/);
 	ldmia		sp!,{r4-r10,pc}
 ___
 $code.=<<___	if ($flavour =~ /64/);
-	ldr		x29,[sp],#16
+	ldr		c29,[csp],#2*__SIZEOF_POINTER__
 	ret
 ___
 $code.=<<___;
@@ -1315,7 +1315,7 @@ if ($flavour =~ /64/) {			######## 64-bit code
 	s/\bq([0-9]+)\b/"v".($1<8?$1:$1+8).".16b"/geo;	# old->new registers
 	s/@\s/\/\//o;			# old->new style commentary
 
-	#s/[v]?(aes\w+)\s+([qv].*)/unaes($1,$2)/geo	or
+	s/[v]?(aes\w+)\s+([qv].*)/unaes($1,$2)/geo	or
 	s/cclr\s+([wx])([^,]+),\s*([a-z]+)/csel	$1$2,$1zr,$1$2,$3/o	or
 	s/mov\.([a-z]+)\s+([wx][0-9]+),\s*([wx][0-9]+)/csel	$2,$3,$2,$1/o	or
 	s/vmov\.i8/movi/o	or	# fix up legacy mnemonics

@@ -719,6 +719,16 @@ if ($flavour =~ /64/) {			######## 64-bit code
 	sprintf	"ins	v%d.d[%d],v%d.d[%d]",$1<8?$1:$1+8,($2 eq "lo")?0:1,
 					     $3<8?$3:$3+8,($4 eq "lo")?0:1;
     }
+    sub unpmull {
+	my ($mnemonic,$arg)=@_;
+
+	if ($arg =~ m/v([0-9]+)\.16b,\s*v([0-9]+)\.16b,\s*v([0-9]+)\.16b/o) {
+	    my $inst = 0x0ee0e000|$1|($2<<5)|($3<<16);
+	    $inst |= 0x40000000	 if ($mnemonic =~ "2");
+	    sprintf ".inst\t0x%08x\t//%s %s $2",$inst,$mnemonic,$arg;
+	}
+    }
+
     foreach(split("\n",$code)) {
 	s/cclr\s+([wx])([^,]+),\s*([a-z]+)/csel	$1$2,$1zr,$1$2,$3/o	or
 	s/vmov\.i8/movi/o		or	# fix up legacy mnemonics
@@ -731,6 +741,8 @@ if ($flavour =~ /64/) {			######## 64-bit code
 
 	s/\bq([0-9]+)\b/"v".($1<8?$1:$1+8).".16b"/geo;	# old->new registers
 	s/@\s/\/\//o;				# old->new style commentary
+
+	s/(pmull2?)\.p64\s+(.*)/unpmull($1,$2)/geo;
 
 	# fix up remaining legacy suffixes
 	s/\.[ui]?8(\s)/$1/o;

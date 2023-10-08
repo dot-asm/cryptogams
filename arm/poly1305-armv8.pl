@@ -70,12 +70,12 @@ poly1305_init:
 	stp	xzr,xzr,[$ctx]		// zero hash value
 	stp	xzr,xzr,[$ctx,#16]	// [along with is_base2_26]
 
-	csel	x0,xzr,x0,eq
+	csel	c0,czr,c0,eq
 	b.eq	.Lno_key
 
 #ifndef	__KERNEL__
-	adrp	x17,OPENSSL_armcap_P
-	ldr	w17,[x17,#:lo12:OPENSSL_armcap_P]
+	adrp	c17,OPENSSL_armcap_P
+	ldr	w17,[c17,#:lo12:OPENSSL_armcap_P]
 #endif
 
 	ldp	$r0,$r1,[$inp]		// load key
@@ -95,19 +95,27 @@ poly1305_init:
 #ifndef	__KERNEL__
 	tst	w17,#ARMV7_NEON
 
-	adr	$d0,.Lpoly1305_blocks
-	adr	$r0,.Lpoly1305_blocks_neon
-	adr	$d1,.Lpoly1305_emit
+	adr	c13,.Lpoly1305_blocks
+	adr	c15,.Lpoly1305_blocks_neon
+	adr	c14,.Lpoly1305_emit
 
-	csel	$d0,$d0,$r0,eq
+	csel	c13,c13,c15,eq
+# ifdef	__CHERI_PURE_CAPABILITY__
+	add	c13, c13, #1
+	add	c14, c14, #1
+	seal	c13, c13, rb
+	seal	c14, c14, rb
+# endif
 
 # ifdef	__ILP32__
-	stp	w#$d0,w#$d1,[$len]
+	stp	w13,w14,[$len]
 # else
-	stp	$d0,$d1,[$len]
+	stp	c13,c14,[$len]
 # endif
-#endif
 	mov	x0,#1
+#else
+	mov	x0,#0
+#endif
 .Lno_key:
 	ret
 .size	poly1305_init,.-poly1305_init
@@ -350,13 +358,13 @@ poly1305_blocks_neon:
 	b.lo	.Lpoly1305_blocks
 
 	.inst	0xd503233f		// paciasp
-	stp	x29,x30,[sp,#-80]!
-	add	x29,sp,#0
+	stp	c29,c30,[csp,#-2*__SIZEOF_POINTER__-64]!
+	add	c29,csp,#0
 
-	stp	d8,d9,[sp,#16]		// meet ABI requirements
-	stp	d10,d11,[sp,#32]
-	stp	d12,d13,[sp,#48]
-	stp	d14,d15,[sp,#64]
+	stp	d8,d9,[csp,#2*__SIZEOF_POINTER__+0]	// meet ABI requirements
+	stp	d10,d11,[csp,#2*__SIZEOF_POINTER__+16]
+	stp	d12,d13,[csp,#2*__SIZEOF_POINTER__+32]
+	stp	d14,d15,[csp,#2*__SIZEOF_POINTER__+48]
 
 	cbz	$is_base2_26,.Lbase2_64_neon
 
@@ -447,21 +455,21 @@ poly1305_blocks_neon:
 	add	$s1,$r1,$r1,lsr#2	// s1 = r1 + (r1 >> 2)
 	mov	$h1,$r1
 	mov	$h2,xzr
-	add	$ctx,$ctx,#48+12
+	cadd	$ctx,$ctx,#48+12
 	bl	poly1305_splat
 
 	bl	poly1305_mult		// r^2
-	sub	$ctx,$ctx,#4
+	csub	$ctx,$ctx,#4
 	bl	poly1305_splat
 
 	bl	poly1305_mult		// r^3
-	sub	$ctx,$ctx,#4
+	csub	$ctx,$ctx,#4
 	bl	poly1305_splat
 
 	bl	poly1305_mult		// r^4
-	sub	$ctx,$ctx,#4
+	csub	$ctx,$ctx,#4
 	bl	poly1305_splat
-	sub	$ctx,$ctx,#48		// restore original $ctx
+	csub	$ctx,$ctx,#48		// restore original $ctx
 	b	.Ldo_neon
 
 .align	4
@@ -476,11 +484,11 @@ poly1305_blocks_neon:
 	ldp	x8,x12,[$inp,#32]	// inp[2:3]
 	subs	$len,$len,#64
 	ldp	x9,x13,[$inp,#48]
-	add	$in2,$inp,#96
+	cadd	$in2,$inp,#96
 	adr	$zeros,.Lzeros
 
 	lsl	$padbit,$padbit,#24
-	add	x15,$ctx,#48
+	cadd	x15,$ctx,#48
 
 #ifdef	__AARCH64EB__
 	rev	x8,x8
@@ -572,7 +580,7 @@ poly1305_blocks_neon:
 
 	subs	$len,$len,#64
 	umull	$ACC4,$IN23_0,${R4}[2]
-	csel	$in2,$zeros,$in2,lo
+	csel	c#$in2,c#$zeros,c#$in2,lo
 	umull	$ACC3,$IN23_0,${R3}[2]
 	umull	$ACC2,$IN23_0,${R2}[2]
 	 ldp	x8,x12,[$in2],#16	// inp[2:3] (or zero)
@@ -835,15 +843,15 @@ poly1305_blocks_neon:
 	// horizontal add
 
 	addp	$ACC3,$ACC3,$ACC3
-	 ldp	d8,d9,[sp,#16]		// meet ABI requirements
+	 ldp	d8,d9,[sp,#2*__SIZEOF_POINTER__+0]	// meet ABI requirements
 	addp	$ACC0,$ACC0,$ACC0
-	 ldp	d10,d11,[sp,#32]
+	 ldp	d10,d11,[sp,#2*__SIZEOF_POINTER__+16]
 	addp	$ACC4,$ACC4,$ACC4
-	 ldp	d12,d13,[sp,#48]
+	 ldp	d12,d13,[sp,#2*__SIZEOF_POINTER__+32]
 	addp	$ACC1,$ACC1,$ACC1
-	 ldp	d14,d15,[sp,#64]
+	 ldp	d14,d15,[sp,#2*__SIZEOF_POINTER__+48]
 	addp	$ACC2,$ACC2,$ACC2
-	 ldr	x30,[sp,#8]
+	 ldr	c30,[csp,#__SIZEOF_POINTER__]
 
 	////////////////////////////////////////////////////////////////
 	// lazy reduction, but without narrowing
@@ -884,7 +892,7 @@ poly1305_blocks_neon:
 	st1	{$ACC4}[0],[$ctx]
 	str	x4,[$ctx,#8]		// set is_base2_26
 
-	ldr	x29,[sp],#80
+	ldr	c29,[csp],#2*__SIZEOF_POINTER__+64
 	 .inst	0xd50323bf		// autiasp
 	ret
 .size	poly1305_blocks_neon,.-poly1305_blocks_neon
@@ -910,7 +918,7 @@ foreach (split("\n",$code)) {
 	(m/\bst[1-4]\s+{[^}]+}\[/ and (s/\.[24]d/.s/g or 1));
 
 	s/\.[124]([sd])\[/.$1\[/;
-	s/w#x([0-9]+)/w$1/g;
+	s/([cw])#x([0-9]+)/$1$2/g;
 
 	print $_,"\n";
 }

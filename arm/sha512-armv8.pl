@@ -194,8 +194,8 @@ $code.=<<___;
 .align	6
 $func:
 #ifndef	__KERNEL__
-	adrp	x16,OPENSSL_armcap_P
-	ldr	w16,[x16,#:lo12:OPENSSL_armcap_P]
+	adrp	c16,OPENSSL_armcap_P
+	ldr	w16,[c16,#:lo12:OPENSSL_armcap_P]
 ___
 $code.=<<___	if ($SZ==4);
 	tst	w16,#ARMV8_SHA256
@@ -210,29 +210,30 @@ ___
 $code.=<<___;
 #endif
 	.inst	0xd503233f				// paciasp
-	stp	x29,x30,[sp,#-128]!
-	add	x29,sp,#0
+	stp	c29,c30,[csp,#-16*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
 
-	stp	x19,x20,[sp,#16]
-	stp	x21,x22,[sp,#32]
-	stp	x23,x24,[sp,#48]
-	stp	x25,x26,[sp,#64]
-	stp	x27,x28,[sp,#80]
-	sub	sp,sp,#4*$SZ
+	stp	c19,c20,[csp,#2*__SIZEOF_POINTER__]
+	stp	c21,c22,[csp,#4*__SIZEOF_POINTER__]
+	stp	c23,c24,[csp,#6*__SIZEOF_POINTER__]
+	stp	c25,c26,[csp,#8*__SIZEOF_POINTER__]
+	stp	c27,c28,[csp,#10*__SIZEOF_POINTER__]
+	sub	csp,csp,#4*$SZ
 
 	ldp	$A,$B,[$ctx]				// load context
 	ldp	$C,$D,[$ctx,#2*$SZ]
+	lsl	$num,$num,#`log(16*$SZ)/log(2)`
 	ldp	$E,$F,[$ctx,#4*$SZ]
-	add	$num,$inp,$num,lsl#`log(16*$SZ)/log(2)`	// end of input
+	cadd	$num,$inp,$num				// end of input
 	ldp	$G,$H,[$ctx,#6*$SZ]
 	adr	$Ktbl,.LK$BITS
-	stp	$ctx,$num,[x29,#96]
+	stp	c#$ctx,c#$num,[c29,#12*__SIZEOF_POINTER__]
 
 .Loop:
 	ldp	@X[0],@X[1],[$inp],#2*$SZ
 	ldr	$t2,[$Ktbl],#$SZ			// *K++
 	eor	$t3,$B,$C				// magic seed
-	str	$inp,[x29,#112]
+	str	c#$inp,[c29,#14*__SIZEOF_POINTER__]
 ___
 for ($i=0;$i<16;$i++)	{ &BODY_00_xx($i,@V); unshift(@V,pop(@V)); }
 $code.=".Loop_16_xx:\n";
@@ -240,13 +241,13 @@ for (;$i<32;$i++)	{ &BODY_00_xx($i,@V); unshift(@V,pop(@V)); }
 $code.=<<___;
 	cbnz	$t2,.Loop_16_xx
 
-	ldp	$ctx,$num,[x29,#96]
-	ldr	$inp,[x29,#112]
-	sub	$Ktbl,$Ktbl,#`$SZ*($rounds+1)`		// rewind
+	ldp	c#$ctx,c#$num,[c29,#12*__SIZEOF_POINTER__]
+	ldr	c#$inp,[c29,#14*__SIZEOF_POINTER__]
+	csub	$Ktbl,$Ktbl,#`$SZ*($rounds+1)`		// rewind
 
 	ldp	@X[0],@X[1],[$ctx]
 	ldp	@X[2],@X[3],[$ctx,#2*$SZ]
-	add	$inp,$inp,#14*$SZ			// advance input pointer
+	cadd	$inp,$inp,#14*$SZ			// advance input pointer
 	ldp	@X[4],@X[5],[$ctx,#4*$SZ]
 	add	$A,$A,@X[0]
 	ldp	@X[6],@X[7],[$ctx,#6*$SZ]
@@ -264,13 +265,13 @@ $code.=<<___;
 	stp	$G,$H,[$ctx,#6*$SZ]
 	b.ne	.Loop
 
-	ldp	x19,x20,[x29,#16]
-	add	sp,sp,#4*$SZ
-	ldp	x21,x22,[x29,#32]
-	ldp	x23,x24,[x29,#48]
-	ldp	x25,x26,[x29,#64]
-	ldp	x27,x28,[x29,#80]
-	ldp	x29,x30,[sp],#128
+	ldp	c19,c20,[c29,#2*__SIZEOF_POINTER__]
+	add	csp,csp,#4*$SZ
+	ldp	c21,c22,[c29,#4*__SIZEOF_POINTER__]
+	ldp	c23,c24,[c29,#6*__SIZEOF_POINTER__]
+	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
+	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
+	ldp	c29,c30,[csp],#16*__SIZEOF_POINTER__
 	.inst	0xd50323bf				// autiasp
 	ret
 .size	$func,.-$func
@@ -361,8 +362,8 @@ $code.=<<___;
 .align	6
 sha256_block_armv8:
 .Lv8_entry:
-	stp		x29,x30,[sp,#-16]!
-	add		x29,sp,#0
+	stp		c29,c30,[csp,#-2*__SIZEOF_POINTER__]!
+	add		c29,csp,#0
 
 	ld1.32		{$ABCD,$EFGH},[$ctx]
 	adr		$Ktbl,.LK256
@@ -405,7 +406,7 @@ $code.=<<___;
 
 	ld1.32		{$W1},[$Ktbl]
 	add.i32		$W0,$W0,@MSG[2]
-	sub		$Ktbl,$Ktbl,#$rounds*$SZ-16	// rewind
+	csub		$Ktbl,$Ktbl,#$rounds*$SZ-16	// rewind
 	orr		$abcd,$ABCD,$ABCD
 	sha256h		$ABCD,$EFGH,$W0
 	sha256h2	$EFGH,$abcd,$W0
@@ -422,7 +423,7 @@ $code.=<<___;
 
 	st1.32		{$ABCD,$EFGH},[$ctx]
 
-	ldr		x29,[sp],#16
+	ldr		c29,[csp],#2*__SIZEOF_POINTER__
 	ret
 .size	sha256_block_armv8,.-sha256_block_armv8
 #endif
@@ -624,9 +625,9 @@ $code.=<<___;
 .align	4
 sha256_block_neon:
 .Lneon_entry:
-	stp	x29, x30, [sp, #-16]!
-	mov	x29, sp
-	sub	sp,sp,#16*4
+	stp	c29, c30, [csp, #-2*__SIZEOF_POINTER__]!
+	mov	c29, csp
+	sub	csp,csp,#16*4
 
 	adr	$Ktbl,.LK256
 	add	$num,$inp,$num,lsl#6	// len to point at the end of inp
@@ -643,14 +644,14 @@ sha256_block_neon:
 	rev32	@X[1],@X[1]		// big-endian
 	rev32	@X[2],@X[2]
 	rev32	@X[3],@X[3]
-	mov	$Xfer,sp
+	cmov	$Xfer,sp
 	add.32	$T0,$T0,@X[0]
 	add.32	$T1,$T1,@X[1]
 	add.32	$T2,$T2,@X[2]
 	st1.32	{$T0-$T1},[$Xfer], #32
 	add.32	$T3,$T3,@X[3]
 	st1.32	{$T2-$T3},[$Xfer]
-	sub	$Xfer,$Xfer,#32
+	csub	$Xfer,$Xfer,#32
 
 	ldp	$A,$B,[$ctx]
 	ldp	$C,$D,[$ctx,#8]
@@ -672,15 +673,15 @@ ___
 $code.=<<___;
 	cmp	$t1,#0				// check for K256 terminator
 	ldr	$t1,[sp,#0]
-	sub	$Xfer,$Xfer,#64
+	csub	$Xfer,$Xfer,#64
 	bne	.L_00_48
 
-	sub	$Ktbl,$Ktbl,#256		// rewind $Ktbl
+	csub	$Ktbl,$Ktbl,#256		// rewind $Ktbl
 	cmp	$inp,$num
-	mov	$Xfer, #64
+	mov	$Xfer, #-64
 	csel	$Xfer, $Xfer, xzr, eq
-	sub	$inp,$inp,$Xfer			// avoid SEGV
-	mov	$Xfer,sp
+	cadd	$inp,$inp,$Xfer			// avoid SEGV
+	cmov	$Xfer,sp
 ___
 	&Xpreload(\&body_00_15);
 	&Xpreload(\&body_00_15);
@@ -709,11 +710,11 @@ $code.=<<___;
 	 eor	$t3,$B,$C
 	stp	$G,$H,[$ctx,#24]
 	 mov	$t4,wzr
-	 mov	$Xfer,sp
+	 cmov	$Xfer,sp
 	b.ne	.L_00_48
 
-	ldr	x29,[x29]
-	add	sp,sp,#16*4+16
+	ldr	c29,[c29]
+	add	csp,csp,#16*4+2*__SIZEOF_POINTER__
 	ret
 .size	sha256_block_neon,.-sha256_block_neon
 ___
@@ -734,8 +735,8 @@ $code.=<<___;
 .align	6
 sha512_block_armv8:
 .Lv8_entry:
-	stp		x29,x30,[sp,#-16]!
-	add		x29,sp,#0
+	stp		c29,c30,[csp,#-2*__SIZEOF_POINTER__]!
+	add		c29,csp,#0
 
 	ld1		{@MSG[0]-@MSG[3]},[$inp],#64	// load input
 	ld1		{@MSG[4]-@MSG[7]},[$inp],#64
@@ -757,12 +758,12 @@ sha512_block_armv8:
 .Loop_hw:
 	ld1.64		{$W0},[$Ktbl],#16
 	subs		$num,$num,#1
-	sub		x4,$inp,#128
+	sub		c4,c#$inp,#128
 	orr		$AB,@H[0],@H[0]			// offload
 	orr		$CD,@H[1],@H[1]
 	orr		$EF,@H[2],@H[2]
 	orr		$GH,@H[3],@H[3]
-	csel		$inp,$inp,x4,ne			// conditional rewind
+	csel		c#$inp,c#$inp,c4,ne		// conditional rewind
 ___
 for($i=0;$i<32;$i++) {
 $code.=<<___;
@@ -787,7 +788,7 @@ $code.=<<___	if ($i<39);
 	ld1.64		{$W1},[$Ktbl],#16
 ___
 $code.=<<___	if ($i==39);
-	sub		$Ktbl,$Ktbl,#$rounds*$SZ	// rewind
+	csub		$Ktbl,$Ktbl,#$rounds*$SZ	// rewind
 ___
 $code.=<<___;
 	add.i64		$W0,$W0,@MSG[0]
@@ -814,7 +815,7 @@ $code.=<<___;
 
 	st1.64		{@H[0]-@H[3]},[$ctx]		// store context
 
-	ldr		x29,[sp],#16
+	ldr		c29,[csp],#2*__SIZEOF_POINTER__
 	ret
 .size	sha512_block_armv8,.-sha512_block_armv8
 #endif
@@ -824,6 +825,7 @@ ___
 $code.=<<___;
 #if !defined(__KERNEL__) && !defined(_WIN64)
 .comm	OPENSSL_armcap_P,4,4
+.hidden	OPENSSL_armcap_P
 #endif
 ___
 
@@ -879,6 +881,8 @@ foreach(split("\n",$code)) {
 	s/\.\w?32\b//		and s/\.16b/\.4s/g;
 	m/\bext\b/		and s/\.2d/\.16b/g	or
 	m/(ld|st)1[^\[]+\[0\]/	and s/\.4s/\.s/g;
+
+	s/([cw])#x([0-9]+)/$1$2/g;
 
 	print $_,"\n";
 }

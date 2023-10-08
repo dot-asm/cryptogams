@@ -134,7 +134,7 @@ $code.=<<___;
 .align	5
 KeccakF1600_int:
 	.inst	0xd503233f			// paciasp
-	stp	$C[2],x30,[sp,#16]		// 32 bytes on top are mine
+	stp	c#$C[2],c30,[csp,#16]		// stack is pre-allocated
 	b	.Loop
 .align	4
 .Loop:
@@ -212,14 +212,14 @@ $code.=<<___;
 	//mov	$C[1],$A[0][2]
 	ror	$A[0][2],$A[2][2],#64-$rhotates[2][2]
 	//mov	$C[0],$A[0][3]
-	ror	$A[0][3],$A[3][3],#64-$rhotates[3][3]
+	ror	$A[0][3],$A[3][3],#64-$rhotates[3][3]	// ?
 	//mov	$C[2],$A[0][4]
-	ror	$A[0][4],$A[4][4],#64-$rhotates[4][4]
+	ror	$A[0][4],$A[4][4],#64-$rhotates[4][4]	// ?
 
-	ror	$A[1][1],$A[1][4],#64-$rhotates[1][4]
-	ror	$A[2][2],$A[2][3],#64-$rhotates[2][3]
+	ror	$A[1][1],$A[1][4],#64-$rhotates[1][4]	// ?
+	ror	$A[2][2],$A[2][3],#64-$rhotates[2][3]	// ?
 	ror	$A[3][3],$A[3][2],#64-$rhotates[3][2]
-	ror	$A[4][4],$A[4][1],#64-$rhotates[4][1]
+	ror	$A[4][4],$A[4][1],#64-$rhotates[4][1]	// ?
 
 	ror	$A[1][4],$A[4][2],#64-$rhotates[4][2]
 	ror	$A[2][3],$A[3][4],#64-$rhotates[3][4]
@@ -228,18 +228,18 @@ $code.=<<___;
 
 	ror	$A[4][2],$A[2][4],#64-$rhotates[2][4]
 	ror	$A[3][4],$A[4][3],#64-$rhotates[4][3]
-	ror	$A[2][1],$A[1][2],#64-$rhotates[1][2]
+	ror	$A[2][1],$A[1][2],#64-$rhotates[1][2]	// ?
 	ror	$A[1][3],$A[3][1],#64-$rhotates[3][1]
 
 	ror	$A[2][4],$A[4][0],#64-$rhotates[4][0]
 	ror	$A[4][3],$A[3][0],#64-$rhotates[3][0]
 	ror	$A[1][2],$A[2][0],#64-$rhotates[2][0]
-	ror	$A[3][1],$A[1][0],#64-$rhotates[1][0]
+	ror	$A[3][1],$A[1][0],#64-$rhotates[1][0]	// ?
 
-	ror	$A[1][0],$C[0],#64-$rhotates[0][3]
+	ror	$A[1][0],$C[0],#64-$rhotates[0][3]	// ?
 	ror	$A[2][0],$C[3],#64-$rhotates[0][1]
-	ror	$A[3][0],$C[2],#64-$rhotates[0][4]
-	ror	$A[4][0],$C[1],#64-$rhotates[0][2]
+	ror	$A[3][0],$C[2],#64-$rhotates[0][4]	// ?
+	ror	$A[4][0],$C[1],#64-$rhotates[0][2]	// ?
 
 	////////////////////////////////////////// Chi+Iota
 	bic	$C[0],$A[0][2],$A[0][1]
@@ -249,7 +249,7 @@ $code.=<<___;
 	eor	$A[0][0],$A[0][0],$C[0]
 	bic	$C[0],$A[0][4],$A[0][3]
 	eor	$A[0][1],$A[0][1],$C[1]
-	 ldr	$C[1],[sp,#16]
+	 ldr	c#$C[1],[csp,#16]
 	eor	$A[0][3],$A[0][3],$C[2]
 	eor	$A[0][4],$A[0][4],$C[3]
 	eor	$A[0][2],$A[0][2],$C[0]
@@ -257,7 +257,7 @@ $code.=<<___;
 
 	bic	$C[0],$A[1][2],$A[1][1]
 	 tst	$C[1],#255			// are we done?
-	 str	$C[1],[sp,#16]
+	 str	c#$C[1],[csp,#16]
 	bic	$C[1],$A[1][3],$A[1][2]
 	bic	$C[2],$A[1][0],$A[1][4]
 	 eor	$A[0][0],$A[0][0],$C[3]		// A[0][0] ^= Iota
@@ -304,7 +304,7 @@ $code.=<<___;
 
 	bne	.Loop
 
-	ldr	x30,[sp,#24]
+	ldr	c30,[csp,#16+__SIZEOF_POINTER__]
 	.inst	0xd50323bf			// autiasp
 	ret
 .size	KeccakF1600_int,.-KeccakF1600_int
@@ -313,17 +313,17 @@ $code.=<<___;
 .align	5
 KeccakF1600:
 	.inst	0xd503233f			// paciasp
-	stp	x29,x30,[sp,#-128]!
-	add	x29,sp,#0
-	stp	x19,x20,[sp,#16]
-	stp	x21,x22,[sp,#32]
-	stp	x23,x24,[sp,#48]
-	stp	x25,x26,[sp,#64]
-	stp	x27,x28,[sp,#80]
-	sub	sp,sp,#48
+	stp	c29,c30,[csp,#-16*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
+	stp	c19,c20,[csp,#2*__SIZEOF_POINTER__]
+	stp	c21,c22,[csp,#4*__SIZEOF_POINTER__]
+	stp	c23,c24,[csp,#6*__SIZEOF_POINTER__]
+	stp	c25,c26,[csp,#8*__SIZEOF_POINTER__]
+	stp	c27,c28,[csp,#10*__SIZEOF_POINTER__]
+	sub	csp,csp,#16+4*__SIZEOF_POINTER__
 
-	str	x0,[sp,#32]			// offload argument
-	mov	$C[0],x0
+	str	c0,[csp,#16+2*__SIZEOF_POINTER__]	// offload argument
+	mov	c#$C[0],c0
 	ldp	$A[0][0],$A[0][1],[x0,#16*0]
 	ldp	$A[0][2],$A[0][3],[$C[0],#16*1]
 	ldp	$A[0][4],$A[1][0],[$C[0],#16*2]
@@ -341,7 +341,7 @@ KeccakF1600:
 	adr	$C[2],iotas
 	bl	KeccakF1600_int
 
-	ldr	$C[0],[sp,#32]
+	ldr	c#$C[0],[csp,#16+2*__SIZEOF_POINTER__]
 	stp	$A[0][0],$A[0][1],[$C[0],#16*0]
 	stp	$A[0][2],$A[0][3],[$C[0],#16*1]
 	stp	$A[0][4],$A[1][0],[$C[0],#16*2]
@@ -356,13 +356,13 @@ KeccakF1600:
 	stp	$A[4][2],$A[4][3],[$C[0],#16*11]
 	str	$A[4][4],[$C[0],#16*12]
 
-	ldp	x19,x20,[x29,#16]
-	add	sp,sp,#48
-	ldp	x21,x22,[x29,#32]
-	ldp	x23,x24,[x29,#48]
-	ldp	x25,x26,[x29,#64]
-	ldp	x27,x28,[x29,#80]
-	ldp	x29,x30,[sp],#128
+	ldp	c19,c20,[c29,#2*__SIZEOF_POINTER__]
+	add	csp,csp,#16+4*__SIZEOF_POINTER__
+	ldp	c21,c22,[c29,#4*__SIZEOF_POINTER__]
+	ldp	c23,c24,[c29,#6*__SIZEOF_POINTER__]
+	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
+	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
+	ldp	c29,c30,[csp],#16*__SIZEOF_POINTER__
 	.inst	0xd50323bf			// autiasp
 	ret
 .size	KeccakF1600,.-KeccakF1600
@@ -372,20 +372,20 @@ KeccakF1600:
 .align	5
 SHA3_absorb:
 	.inst	0xd503233f			// paciasp
-	stp	x29,x30,[sp,#-128]!
-	add	x29,sp,#0
-	stp	x19,x20,[sp,#16]
-	stp	x21,x22,[sp,#32]
-	stp	x23,x24,[sp,#48]
-	stp	x25,x26,[sp,#64]
-	stp	x27,x28,[sp,#80]
-	sub	sp,sp,#64
+	stp	c29,c30,[csp,#-16*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
+	stp	c19,c20,[csp,#2*__SIZEOF_POINTER__]
+	stp	c21,c22,[csp,#4*__SIZEOF_POINTER__]
+	stp	c23,c24,[csp,#6*__SIZEOF_POINTER__]
+	stp	c25,c26,[csp,#8*__SIZEOF_POINTER__]
+	stp	c27,c28,[csp,#10*__SIZEOF_POINTER__]
+	sub	csp,csp,#16+4*__SIZEOF_POINTER__+16
 
-	stp	x0,x1,[sp,#32]			// offload arguments
-	stp	x2,x3,[sp,#48]
+	stp	c0,c1,[csp,#16+2*__SIZEOF_POINTER__]	// offload arguments
+	stp	x2,x3,[csp,#16+4*__SIZEOF_POINTER__]
 
-	mov	$C[0],x0			// uint64_t A[5][5]
-	mov	$C[1],x1			// const void *inp
+	mov	c#$C[0],c0			// uint64_t A[5][5]
+	mov	c#$C[1],c1			// const void *inp
 	mov	$C[2],x2			// size_t len
 	mov	$C[3],x3			// size_t bsz
 	ldp	$A[0][0],$A[0][1],[$C[0],#16*0]
@@ -408,7 +408,7 @@ SHA3_absorb:
 	subs	$C[0],$C[2],$C[3]		// len - bsz
 	blo	.Labsorbed
 
-	str	$C[0],[sp,#48]			// save len - bsz
+	str	$C[0],[csp,#16+4*__SIZEOF_POINTER__]	// save len - bsz
 	cmp	$C[3],#104
 ___
 sub load_n_xor {
@@ -449,19 +449,19 @@ load_n_xor(18,20);
 $code.=<<___;
 
 .Lprocess_block:
-	add	$C[1],@C[1],@C[3]
-	str	$C[1],[sp,#40]			// save inp
+	add	c#$C[1],c#@C[1],@C[3]
+	str	c#$C[1],[csp,#16+3*__SIZEOF_POINTER__]	// save inp
 
 	adr	$C[2],iotas
 	bl	KeccakF1600_int
 
-	ldr	$C[1],[sp,#40]			// restore arguments
-	ldp	$C[2],$C[3],[sp,#48]
+	ldr	c#$C[1],[csp,#16+3*__SIZEOF_POINTER__]	// restore arguments
+	ldp	$C[2],$C[3],[csp,#16+4*__SIZEOF_POINTER__]
 	b	.Loop_absorb
 
 .align	4
 .Labsorbed:
-	ldr	$C[1],[sp,#32]
+	ldr	c#$C[1],[sp,#16+2*__SIZEOF_POINTER__]
 	stp	$A[0][0],$A[0][1],[$C[1],#16*0]
 	stp	$A[0][2],$A[0][3],[$C[1],#16*1]
 	stp	$A[0][4],$A[1][0],[$C[1],#16*2]
@@ -477,13 +477,13 @@ $code.=<<___;
 	str	$A[4][4],[$C[1],#16*12]
 
 	mov	x0,$C[2]			// return value
-	ldp	x19,x20,[x29,#16]
-	add	sp,sp,#64
-	ldp	x21,x22,[x29,#32]
-	ldp	x23,x24,[x29,#48]
-	ldp	x25,x26,[x29,#64]
-	ldp	x27,x28,[x29,#80]
-	ldp	x29,x30,[sp],#128
+	ldp	c19,c20,[c29,#2*__SIZEOF_POINTER__]
+	add	csp,csp,#16+4*__SIZEOF_POINTER__+16
+	ldp	c21,c22,[c29,#4*__SIZEOF_POINTER__]
+	ldp	c23,c24,[c29,#6*__SIZEOF_POINTER__]
+	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
+	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
+	ldp	c29,c30,[csp],#16*__SIZEOF_POINTER__
 	.inst	0xd50323bf			// autiasp
 	ret
 .size	SHA3_absorb,.-SHA3_absorb
@@ -496,13 +496,13 @@ $code.=<<___;
 .align	5
 SHA3_squeeze:
 	.inst	0xd503233f			// paciasp
-	stp	x29,x30,[sp,#-48]!
-	add	x29,sp,#0
-	stp	x19,x20,[sp,#16]
-	stp	x21,x22,[sp,#32]
+	stp	c29,c30,[csp,#-6*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
+	stp	c19,c20,[csp,#2*__SIZEOF_POINTER__]
+	stp	c21,c22,[csp,#4*__SIZEOF_POINTER__]
 
-	mov	$A_flat,x0			// put aside arguments
-	mov	$out,x1
+	cmov	$A_flat,x0			// put aside arguments
+	cmov	$out,x1
 	mov	$len,x2
 	mov	$bsz,x3
 
@@ -520,9 +520,9 @@ SHA3_squeeze:
 	subs	x3,x3,#8
 	bhi	.Loop_squeeze
 
-	mov	x0,$A_flat
+	cmov	x0,$A_flat
 	bl	KeccakF1600
-	mov	x0,$A_flat
+	cmov	x0,$A_flat
 	mov	x3,$bsz
 	b	.Loop_squeeze
 
@@ -555,9 +555,9 @@ SHA3_squeeze:
 	strb	w4,[$out],#1
 
 .Lsqueeze_done:
-	ldp	x19,x20,[sp,#16]
-	ldp	x21,x22,[sp,#32]
-	ldp	x29,x30,[sp],#48
+	ldp	c19,c20,[csp,#2*__SIZEOF_POINTER__]
+	ldp	c21,c22,[csp,#4*__SIZEOF_POINTER__]
+	ldp	c29,c30,[csp],#6*__SIZEOF_POINTER__
 	.inst	0xd50323bf			// autiasp
 	ret
 .size	SHA3_squeeze,.-SHA3_squeeze
@@ -674,12 +674,12 @@ KeccakF1600_ce:
 .align	5
 KeccakF1600_cext:
 	.inst	0xd503233f		// paciasp
-	stp	x29,x30,[sp,#-80]!
-	add	x29,sp,#0
-	stp	d8,d9,[sp,#16]		// per ABI requirement
-	stp	d10,d11,[sp,#32]
-	stp	d12,d13,[sp,#48]
-	stp	d14,d15,[sp,#64]
+	stp	c29,c30,[csp,#-2*__SIZEOF_POINTER__-64]!
+	add	c29,csp,#0
+	stp	d8,d9,[csp,#2*__SIZEOF_POINTER__+0]	// per ABI requirement
+	stp	d10,d11,[csp,#2*__SIZEOF_POINTER__+16]
+	stp	d12,d13,[csp,#2*__SIZEOF_POINTER__+32]
+	stp	d14,d15,[csp,#2*__SIZEOF_POINTER__+48]
 ___
 for($i=0; $i<24; $i+=2) {		# load A[5][5]
 my $j=$i+1;
@@ -691,7 +691,7 @@ $code.=<<___;
 	ldr	d24,[x0,#8*$i]
 	adr	x10,iotas
 	bl	KeccakF1600_ce
-	ldr	x30,[sp,#8]
+	ldr	c30,[csp,#__SIZEOF_POINTER__]
 ___
 for($i=0; $i<24; $i+=2) {		# store A[5][5]
 my $j=$i+1;
@@ -702,11 +702,11 @@ ___
 $code.=<<___;
 	str	d24,[x0,#8*$i]
 
-	ldp	d8,d9,[sp,#16]
-	ldp	d10,d11,[sp,#32]
-	ldp	d12,d13,[sp,#48]
-	ldp	d14,d15,[sp,#64]
-	ldr	x29,[sp],#80
+	ldp	d8,d9,[csp,#2*__SIZEOF_POINTER__+0]
+	ldp	d10,d11,[csp,#2*__SIZEOF_POINTER__+16]
+	ldp	d12,d13,[csp,#2*__SIZEOF_POINTER__+32]
+	ldp	d14,d15,[csp,#2*__SIZEOF_POINTER__+48]
+	ldr	c29,[csp],#2*__SIZEOF_POINTER__+64
 	.inst	0xd50323bf		// autiasp
 	ret
 .size	KeccakF1600_cext,.-KeccakF1600_cext
@@ -721,12 +721,12 @@ $code.=<<___;
 .align	5
 SHA3_absorb_cext:
 	.inst	0xd503233f		// paciasp
-	stp	x29,x30,[sp,#-80]!
-	add	x29,sp,#0
-	stp	d8,d9,[sp,#16]		// per ABI requirement
-	stp	d10,d11,[sp,#32]
-	stp	d12,d13,[sp,#48]
-	stp	d14,d15,[sp,#64]
+	stp	c29,c30,[csp,#-2*__SIZEOF_POINTER__-64]!
+	add	c29,csp,#0
+	stp	d8,d9,[csp,#2*__SIZEOF_POINTER__+0]	// per ABI requirement
+	stp	d10,d11,[csp,#2*__SIZEOF_POINTER__+16]
+	stp	d12,d13,[csp,#2*__SIZEOF_POINTER__+32]
+	stp	d14,d15,[csp,#2*__SIZEOF_POINTER__+48]
 ___
 for($i=0; $i<24; $i+=2) {		# load A[5][5]
 my $j=$i+1;
@@ -818,11 +818,11 @@ $code.=<<___;
 	str	d24,[x0,#8*$i]
 	add	x0,$len,$bsz		// return value
 
-	ldp	d8,d9,[sp,#16]
-	ldp	d10,d11,[sp,#32]
-	ldp	d12,d13,[sp,#48]
-	ldp	d14,d15,[sp,#64]
-	ldp	x29,x30,[sp],#80
+	ldp	d8,d9,[csp,#2*__SIZEOF_POINTER__+0]
+	ldp	d10,d11,[csp,#2*__SIZEOF_POINTER__+16]
+	ldp	d12,d13,[csp,#2*__SIZEOF_POINTER__+32]
+	ldp	d14,d15,[csp,#2*__SIZEOF_POINTER__+48]
+	ldp	c29,c30,[csp],#2*__SIZEOF_POINTER__+64
 	.inst	0xd50323bf		// autiasp
 	ret
 .size	SHA3_absorb_cext,.-SHA3_absorb_cext
@@ -836,9 +836,9 @@ $code.=<<___;
 .align	5
 SHA3_squeeze_cext:
 	.inst	0xd503233f		// paciasp
-	stp	x29,x30,[sp,#-16]!
-	add	x29,sp,#0
-	mov	x9,$ctx
+	stp	c29,c30,[csp,#-2*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
+	cmov	x9,$ctx
 	mov	x10,$bsz
 
 .Loop_squeeze_ce:
@@ -856,8 +856,8 @@ SHA3_squeeze_cext:
 	bhi	.Loop_squeeze_ce
 
 	bl	KeccakF1600_cext
-	ldr	x30,[sp,#8]
-	mov	x9,$ctx
+	ldr	c30,[csp,#__SIZEOF_POINTER__]
+	cmov	x9,$ctx
 	mov	x10,$bsz
 	b	.Loop_squeeze_ce
 
@@ -890,7 +890,7 @@ SHA3_squeeze_cext:
 	strb	w4,[$out],#1
 
 .Lsqueeze_done_ce:
-	ldr	x29,[sp],#16
+	ldr	c29,[csp],#2*__SIZEOF_POINTER__
 	.inst	0xd50323bf		// autiasp
 	ret
 .size	SHA3_squeeze_cext,.-SHA3_squeeze_cext
@@ -922,6 +922,7 @@ foreach(split("\n",$code)) {
 
 	m/\b(ld1r|rax1|xar)\b/ and s/\.16b/.2d/g;
 	$sha3ops or s/\b(eor3|rax1|xar|bcax)\s+(v.*)/unsha3($1,$2)/ge;
+	s/([cw])#x([0-9]+)/$1$2/g;
 
 	print $_,"\n";
 }

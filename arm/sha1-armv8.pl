@@ -185,18 +185,18 @@ $code.=<<___;
 .type	sha1_block_data_order,%function
 .align	6
 sha1_block_data_order:
-	adrp	x16,OPENSSL_armcap_P
-	ldr	w16,[x16,#:lo12:OPENSSL_armcap_P]
+	adrp	c16,OPENSSL_armcap_P
+	ldr	w16,[c16,#:lo12:OPENSSL_armcap_P]
 	tst	w16,#ARMV8_SHA1
 	b.ne	.Lv8_entry
 
-	stp	x29,x30,[sp,#-96]!
-	add	x29,sp,#0
-	stp	x19,x20,[sp,#16]
-	stp	x21,x22,[sp,#32]
-	stp	x23,x24,[sp,#48]
-	stp	x25,x26,[sp,#64]
-	stp	x27,x28,[sp,#80]
+	stp	c29,c30,[csp,#-12*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
+	stp	c19,c20,[csp,#2*__SIZEOF_POINTER__]
+	stp	c21,c22,[csp,#4*__SIZEOF_POINTER__]
+	stp	c23,c24,[csp,#6*__SIZEOF_POINTER__]
+	stp	c25,c26,[csp,#8*__SIZEOF_POINTER__]
+	stp	c27,c28,[csp,#10*__SIZEOF_POINTER__]
 
 	ldp	$A,$B,[$ctx]
 	ldp	$C,$D,[$ctx,#8]
@@ -230,12 +230,12 @@ $code.=<<___;
 	str	$E,[$ctx,#16]
 	cbnz	$num,.Loop
 
-	ldp	x19,x20,[sp,#16]
-	ldp	x21,x22,[sp,#32]
-	ldp	x23,x24,[sp,#48]
-	ldp	x25,x26,[sp,#64]
-	ldp	x27,x28,[sp,#80]
-	ldr	x29,[sp],#96
+	ldp	c19,c20,[csp,#2*__SIZEOF_POINTER__]
+	ldp	c21,c22,[csp,#4*__SIZEOF_POINTER__]
+	ldp	c23,c24,[csp,#6*__SIZEOF_POINTER__]
+	ldp	c25,c26,[csp,#8*__SIZEOF_POINTER__]
+	ldp	c27,c28,[csp,#10*__SIZEOF_POINTER__]
+	ldr	c29,[csp],#12*__SIZEOF_POINTER__
 	ret
 .size	sha1_block_data_order,.-sha1_block_data_order
 ___
@@ -258,7 +258,7 @@ sha1_block_armv8:
 	eor	$E,$E,$E
 	ld1.32	{$ABCD},[$ctx],#16
 	ld1.32	{$E}[0],[$ctx]
-	sub	$ctx,$ctx,#16
+	csub	$ctx,$ctx,#16
 	ld1.32	{@Kxx[0]-@Kxx[3]},[x4]
 
 .Loop_hw:
@@ -324,6 +324,7 @@ $code.=<<___;
 .align	2
 #if !defined(__KERNELL__) && !defined(_WIN64)
 .comm	OPENSSL_armcap_P,4,4
+.hidden	OPENSSL_armcap_P
 #endif
 ___
 }}}

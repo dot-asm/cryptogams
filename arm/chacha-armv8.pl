@@ -151,24 +151,24 @@ ChaCha20_ctr32:
 	b.lo	.Lshort
 
 #ifndef	__KERNEL__
-	adrp	x17,OPENSSL_armcap_P
-	ldr	w17,[x17,#:lo12:OPENSSL_armcap_P]
+	adrp	c17,OPENSSL_armcap_P
+	ldr	w17,[c17,#:lo12:OPENSSL_armcap_P]
 	tst	w17,#ARMV7_NEON
 	b.ne	.LChaCha20_neon
 #endif
 
 .Lshort:
 	.inst	0xd503233f			// paciasp
-	stp	x29,x30,[sp,#-96]!
-	add	x29,sp,#0
+	stp	c29,c30,[sp,#-12*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
 
 	adr	@x[0],.Lsigma
-	stp	x19,x20,[sp,#16]
-	stp	x21,x22,[sp,#32]
-	stp	x23,x24,[sp,#48]
-	stp	x25,x26,[sp,#64]
-	stp	x27,x28,[sp,#80]
-	sub	sp,sp,#64
+	stp	c19,c20,[csp,#2*__SIZEOF_POINTER__]
+	stp	c21,c22,[csp,#4*__SIZEOF_POINTER__]
+	stp	c23,c24,[csp,#6*__SIZEOF_POINTER__]
+	stp	c25,c26,[csp,#8*__SIZEOF_POINTER__]
+	stp	c27,c28,[csp,#10*__SIZEOF_POINTER__]
+	sub	csp,csp,#64
 
 	ldp	@d[0],@d[1],[@x[0]]		// load sigma
 	ldp	@d[2],@d[3],[$key]		// load key
@@ -242,7 +242,7 @@ $code.=<<___;
 	add	@x[12],@x[12],@x[13],lsl#32
 	add	@x[14],@x[14],@x[15],lsl#32
 	ldp	@x[13],@x[15],[$inp,#48]
-	add	$inp,$inp,#64
+	cadd	$inp,$inp,#64
 #ifdef	__AARCH64EB__
 	rev	@x[0],@x[0]
 	rev	@x[2],@x[2]
@@ -267,17 +267,17 @@ $code.=<<___;
 	stp	@x[4],@x[6],[$out,#16]
 	stp	@x[8],@x[10],[$out,#32]
 	stp	@x[12],@x[14],[$out,#48]
-	add	$out,$out,#64
+	cadd	$out,$out,#64
 
 	b.hi	.Loop_outer
 
-	ldp	x19,x20,[x29,#16]
-	add	sp,sp,#64
-	ldp	x21,x22,[x29,#32]
-	ldp	x23,x24,[x29,#48]
-	ldp	x25,x26,[x29,#64]
-	ldp	x27,x28,[x29,#80]
-	ldp	x29,x30,[sp],#96
+	ldp	c19,c20,[c29,#2*__SIZEOF_POINTER__]
+	add	csp,csp,#64
+	ldp	c21,c22,[c29,#4*__SIZEOF_POINTER__]
+	ldp	c23,c24,[c29,#6*__SIZEOF_POINTER__]
+	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
+	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
+	ldp	c29,c30,[csp],#12*__SIZEOF_POINTER__
 	.inst	0xd50323bf			// autiasp
 .Labort:
 	ret
@@ -286,10 +286,10 @@ $code.=<<___;
 .Ltail:
 	add	$len,$len,#64
 .Less_than_64:
-	sub	$out,$out,#1
-	add	$inp,$inp,$len
-	add	$out,$out,$len
-	add	$ctr,sp,$len
+	csub	$out,$out,#1
+	cadd	$inp,$inp,$len
+	cadd	$out,$out,$len
+	cadd	$ctr,sp,$len
 	neg	$len,$len
 
 	add	@x[0],@x[0],@x[1],lsl#32	// pack
@@ -328,13 +328,13 @@ $code.=<<___;
 	stp	xzr,xzr,[sp,#32]
 	stp	xzr,xzr,[sp,#48]
 
-	ldp	x19,x20,[x29,#16]
-	add	sp,sp,#64
-	ldp	x21,x22,[x29,#32]
-	ldp	x23,x24,[x29,#48]
-	ldp	x25,x26,[x29,#64]
-	ldp	x27,x28,[x29,#80]
-	ldp	x29,x30,[sp],#96
+	ldp	c19,c20,[c29,#2*__SIZEOF_POINTER__]
+	add	csp,csp,#64
+	ldp	c21,c22,[c29,#4*__SIZEOF_POINTER__]
+	ldp	c23,c24,[c29,#6*__SIZEOF_POINTER__]
+	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
+	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
+	ldp	c29,c30,[csp],#12*__SIZEOF_POINTER__
 	.inst	0xd50323bf			// autiasp
 	ret
 .size	ChaCha20_ctr32,.-ChaCha20_ctr32
@@ -435,19 +435,19 @@ $code.=<<___;
 ChaCha20_neon:
 .LChaCha20_neon:
 	.inst	0xd503233f			// paciasp
-	stp	x29,x30,[sp,#-96]!
-	add	x29,sp,#0
+	stp	c29,c30,[csp,#-12*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
 
 	adr	@x[0],.Lsigma
-	stp	x19,x20,[sp,#16]
-	stp	x21,x22,[sp,#32]
-	stp	x23,x24,[sp,#48]
-	stp	x25,x26,[sp,#64]
-	stp	x27,x28,[sp,#80]
+	stp	c19,c20,[csp,#2*__SIZEOF_POINTER__]
+	stp	c21,c22,[csp,#4*__SIZEOF_POINTER__]
+	stp	c23,c24,[csp,#6*__SIZEOF_POINTER__]
+	stp	c25,c26,[csp,#8*__SIZEOF_POINTER__]
+	stp	c27,c28,[csp,#10*__SIZEOF_POINTER__]
 	cmp	$len,#512
 	b.hs	.L512_or_more_neon
 
-	sub	sp,sp,#64
+	sub	csp,csp,#64
 
 	ldp	@d[0],@d[1],[@x[0]]		// load sigma
 	ld1	{@K[0]},[@x[0]],#16
@@ -588,7 +588,7 @@ $code.=<<___;
 	add	@x[14],@x[14],@x[15],lsl#32
 	ldp	@x[13],@x[15],[$inp,#48]
 	 add	$xd0,$xd0,@K[3]
-	add	$inp,$inp,#64
+	cadd	$inp,$inp,#64
 #ifdef	__AARCH64EB__
 	rev	@x[0],@x[0]
 	rev	@x[2],@x[2]
@@ -625,7 +625,7 @@ $code.=<<___;
 	stp	@x[4],@x[6],[$out,#16]
 	stp	@x[8],@x[10],[$out,#32]
 	stp	@x[12],@x[14],[$out,#48]
-	add	$out,$out,#64
+	cadd	$out,$out,#64
 
 	st1.8	{$xa0-$xd0},[$out],#64
 	 add	$xa2,$xa2,@K[0]
@@ -664,13 +664,13 @@ $code.=<<___;
 	eor	@K[2],@K[2],@K[2]
 	eor	@K[3],@K[3],@K[3]
 
-	ldp	x19,x20,[x29,#16]
-	add	sp,sp,#64
-	ldp	x21,x22,[x29,#32]
-	ldp	x23,x24,[x29,#48]
-	ldp	x25,x26,[x29,#64]
-	ldp	x27,x28,[x29,#80]
-	ldp	x29,x30,[sp],#96
+	ldp	c19,c20,[c29,#2*__SIZEOF_POINTER__]
+	add	csp,csp,#64
+	ldp	c21,c22,[c29,#4*__SIZEOF_POINTER__]
+	ldp	c23,c24,[c29,#6*__SIZEOF_POINTER__]
+	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
+	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
+	ldp	c29,c30,[csp],#12*__SIZEOF_POINTER__
 	.inst	0xd50323bf			// autiasp
 	ret
 
@@ -693,7 +693,7 @@ $code.=<<___;
 	add	@x[12],@x[12],@x[13],lsl#32
 	add	@x[14],@x[14],@x[15],lsl#32
 	ldp	@x[13],@x[15],[$inp,#48]
-	add	$inp,$inp,#64
+	cadd	$inp,$inp,#64
 #ifdef	__AARCH64EB__
 	rev	@x[0],@x[0]
 	rev	@x[2],@x[2]
@@ -721,7 +721,7 @@ $code.=<<___;
 	 add	$xc0,$xc0,@K[2]
 	stp	@x[12],@x[14],[$out,#48]
 	 add	$xd0,$xd0,@K[3]
-	add	$out,$out,#64
+	cadd	$out,$out,#64
 	b.eq	.Ldone_neon
 	sub	$len,$len,#64
 	cmp	$len,#64
@@ -776,10 +776,10 @@ $code.=<<___;
 .Last_neon:
 	st1.8	{$xa0-$xd0},[sp]		// off-load complete block
 
-	sub	$out,$out,#1
-	add	$inp,$inp,$len
-	add	$out,$out,$len
-	add	$ctr,sp,$len
+	csub	$out,$out,#1
+	cadd	$inp,$inp,$len
+	cadd	$out,$out,$len
+	cadd	$ctr,sp,$len
 	neg	$len,$len
 
 .Loop_tail_neon:
@@ -798,13 +798,13 @@ $code.=<<___;
 	eor	@K[2],@K[2],@K[2]
 	eor	@K[3],@K[3],@K[3]
 
-	ldp	x19,x20,[x29,#16]
-	add	sp,sp,#64
-	ldp	x21,x22,[x29,#32]
-	ldp	x23,x24,[x29,#48]
-	ldp	x25,x26,[x29,#64]
-	ldp	x27,x28,[x29,#80]
-	ldp	x29,x30,[sp],#96
+	ldp	c19,c20,[c29,#2*__SIZEOF_POINTER__]
+	add	csp,csp,#64
+	ldp	c21,c22,[c29,#4*__SIZEOF_POINTER__]
+	ldp	c23,c24,[c29,#6*__SIZEOF_POINTER__]
+	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
+	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
+	ldp	c29,c30,[csp],#12*__SIZEOF_POINTER__
 	.inst	0xd50323bf			// autiasp
 	ret
 
@@ -868,18 +868,18 @@ $code.=<<___;
 .align	5
 ChaCha20_512_neon:
 	.inst	0xd503233f			// paciasp
-	stp	x29,x30,[sp,#-96]!
-	add	x29,sp,#0
+	stp	c29,c30,[csp,#-12*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
 
 	adr	@x[0],.Lsigma
-	stp	x19,x20,[sp,#16]
-	stp	x21,x22,[sp,#32]
-	stp	x23,x24,[sp,#48]
-	stp	x25,x26,[sp,#64]
-	stp	x27,x28,[sp,#80]
+	stp	c19,c20,[csp,#2*__SIZEOF_POINTER__]
+	stp	c21,c22,[csp,#4*__SIZEOF_POINTER__]
+	stp	c23,c24,[csp,#6*__SIZEOF_POINTER__]
+	stp	c25,c26,[csp,#8*__SIZEOF_POINTER__]
+	stp	c27,c28,[csp,#10*__SIZEOF_POINTER__]
 
 .L512_or_more_neon:
-	sub	sp,sp,#128+64
+	sub	csp,csp,#128+64
 
 	eor	$ONE,$ONE,$ONE
 	ldp	@d[0],@d[1],[@x[0]]		// load sigma
@@ -890,7 +890,7 @@ ChaCha20_512_neon:
 	ldp	@d[6],@d[7],[$ctr]		// load counter
 	ld1	{@K[3]},[$ctr]
 	ld1	{$ONE}[0],[@x[0]]
-	add	$key,@x[0],#16			// .Lrot24
+	cadd	$key,@x[0],#16			// .Lrot24
 #ifdef	__AARCH64EB__
 	rev64	@K[0],@K[0]
 	ror	@d[2],@d[2],#32
@@ -1033,7 +1033,7 @@ $code.=<<___;
 	add	@x[12],@x[12],@x[13],lsl#32
 	add	@x[14],@x[14],@x[15],lsl#32
 	ldp	@x[13],@x[15],[$inp,#48]
-	add	$inp,$inp,#64
+	cadd	$inp,$inp,#64
 #ifdef	__AARCH64EB__
 	rev	@x[0],@x[0]
 	rev	@x[2],@x[2]
@@ -1064,7 +1064,7 @@ $code.=<<___;
 	mov.32	@x[4],@d[2]
 	lsr	@x[5],@d[2],#32
 	 stp	@x[12],@x[14],[$out,#48]
-	 add	$out,$out,#64
+	 cadd	$out,$out,#64
 	mov.32	@x[6],@d[3]
 	lsr	@x[7],@d[3],#32
 	mov.32	@x[8],@d[4]
@@ -1173,7 +1173,7 @@ $code.=<<___;
 	 add	$B3,$B3,@K[1]
 	ldp	@x[13],@x[15],[$inp,#48]
 	 add	$B4,$B4,@K[1]
-	add	$inp,$inp,#64
+	cadd	$inp,$inp,#64
 	 add	$B5,$B5,@K[1]
 
 #ifdef	__AARCH64EB__
@@ -1206,7 +1206,7 @@ $code.=<<___;
 	stp	@x[4],@x[6],[$out,#16]
 	stp	@x[8],@x[10],[$out,#32]
 	stp	@x[12],@x[14],[$out,#48]
-	add	$out,$out,#64
+	cadd	$out,$out,#64
 	st1.8	{$A0-$D0},[$out],#64
 
 	ld1.8	{$A0-$D0},[$inp],#64
@@ -1267,9 +1267,9 @@ $code.=<<___;
 	b.eq	.Ldone_512_neon
 
 	// we have <512 bytes tail, harmonize state with other contexts
-	sub	$key,$key,#16			// .Lone
+	csub	$key,$key,#16			// .Lone
 	cmp	$len,#192
-	add	sp,sp,#128
+	cadd	sp,sp,#128
 	sub	@K[3],@K[3],$ONE		// -= 2
 	ld1	{$CTR,$ROT24},[$key]
 	b.hs	.Loop_outer_neon
@@ -1292,13 +1292,13 @@ $code.=<<___;
 	eor	@K[5],@K[5],@K[5]
 	eor	@K[6],@K[6],@K[6]
 
-	ldp	x19,x20,[x29,#16]
-	add	sp,sp,#128+64
-	ldp	x21,x22,[x29,#32]
-	ldp	x23,x24,[x29,#48]
-	ldp	x25,x26,[x29,#64]
-	ldp	x27,x28,[x29,#80]
-	ldp	x29,x30,[sp],#96
+	ldp	c19,c20,[c29,#2*__SIZEOF_POINTER__]
+	add	csp,csp,#128+64
+	ldp	c21,c22,[c29,#4*__SIZEOF_POINTER__]
+	ldp	c23,c24,[c29,#6*__SIZEOF_POINTER__]
+	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
+	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
+	ldp	c29,c30,[csp],#12*__SIZEOF_POINTER__
 	.inst	0xd50323bf			// autiasp
 	ret
 .size	ChaCha20_512_neon,.-ChaCha20_512_neon
