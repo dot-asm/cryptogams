@@ -72,6 +72,10 @@
 # March 2014.
 #
 # Add support for Intel SHA Extensions.
+#
+# October 2023.
+#
+# Add support for Intel SHA512 Extension.
 
 ######################################################################
 # Current performance in cycles per processed byte (less is better):
@@ -540,6 +544,49 @@ $TABLE:
 
 	.quad	0x0001020304050607,0x08090a0b0c0d0e0f
 	.quad	0x0001020304050607,0x08090a0b0c0d0e0f
+
+${TABLE}_nodup:
+	.quad	0x428a2f98d728ae22,0x7137449123ef65cd
+	.quad	0xb5c0fbcfec4d3b2f,0xe9b5dba58189dbbc
+	.quad	0x3956c25bf348b538,0x59f111f1b605d019
+	.quad	0x923f82a4af194f9b,0xab1c5ed5da6d8118
+	.quad	0xd807aa98a3030242,0x12835b0145706fbe
+	.quad	0x243185be4ee4b28c,0x550c7dc3d5ffb4e2
+	.quad	0x72be5d74f27b896f,0x80deb1fe3b1696b1
+	.quad	0x9bdc06a725c71235,0xc19bf174cf692694
+	.quad	0xe49b69c19ef14ad2,0xefbe4786384f25e3
+	.quad	0x0fc19dc68b8cd5b5,0x240ca1cc77ac9c65
+	.quad	0x2de92c6f592b0275,0x4a7484aa6ea6e483
+	.quad	0x5cb0a9dcbd41fbd4,0x76f988da831153b5
+	.quad	0x983e5152ee66dfab,0xa831c66d2db43210
+	.quad	0xb00327c898fb213f,0xbf597fc7beef0ee4
+	.quad	0xc6e00bf33da88fc2,0xd5a79147930aa725
+	.quad	0x06ca6351e003826f,0x142929670a0e6e70
+	.quad	0x27b70a8546d22ffc,0x2e1b21385c26c926
+	.quad	0x4d2c6dfc5ac42aed,0x53380d139d95b3df
+	.quad	0x650a73548baf63de,0x766a0abb3c77b2a8
+	.quad	0x81c2c92e47edaee6,0x92722c851482353b
+	.quad	0xa2bfe8a14cf10364,0xa81a664bbc423001
+	.quad	0xc24b8b70d0f89791,0xc76c51a30654be30
+	.quad	0xd192e819d6ef5218,0xd69906245565a910
+	.quad	0xf40e35855771202a,0x106aa07032bbd1b8
+	.quad	0x19a4c116b8d2d0c8,0x1e376c085141ab53
+	.quad	0x2748774cdf8eeb99,0x34b0bcb5e19b48a8
+	.quad	0x391c0cb3c5c95a63,0x4ed8aa4ae3418acb
+	.quad	0x5b9cca4f7763e373,0x682e6ff3d6b2b8a3
+	.quad	0x748f82ee5defb2fc,0x78a5636f43172f60
+	.quad	0x84c87814a1f0ab72,0x8cc702081a6439ec
+	.quad	0x90befffa23631e28,0xa4506cebde82bde9
+	.quad	0xbef9a3f7b2c67915,0xc67178f2e372532b
+	.quad	0xca273eceea26619c,0xd186b8c721c0c207
+	.quad	0xeada7dd6cde0eb1e,0xf57d4f7fee6ed178
+	.quad	0x06f067aa72176fba,0x0a637dc5a2c898a6
+	.quad	0x113f9804bef90dae,0x1b710b35131c471b
+	.quad	0x28db77f523047d84,0x32caab7b40c72493
+	.quad	0x3c9ebe0a15c9bebc,0x431d67c49c100d4c
+	.quad	0x4cc5d4becb3e42b6,0x597f299cfc657e2a
+	.quad	0x5fcb6fab3ad6faec,0x6c44198c4a475817
+
 	.asciz	"SHA512 block transform for x86_64, CRYPTOGAMS by \@dot-asm"
 ___
 }
@@ -716,6 +763,164 @@ $code.=<<___;
 	ret
 .cfi_endproc
 .size	sha256_block_data_order_shaext,.-sha256_block_data_order_shaext
+___
+}}}
+if ($SZ==8 && $shaext && $avx>1) {{{
+######################################################################
+# Intel SHA Extensions implementation of SHA512 update function.
+#
+my ($ctx,$inp,$num,$Tbl)=("%rdi","%rsi","%rdx","%rcx");
+
+my ($Wi,$ABEF,$CDGH,$TMP,$BSWAP,$ABEF_SAVE,$CDGH_SAVE)=map("%ymm$_",(4..10));
+my @MSG=map("%ymm$_",(0..3));
+
+$code.=<<___;
+.globl	sha512_block_data_order_shaext
+.type	sha512_block_data_order_shaext,\@function,3,"unwind"
+.align	64
+sha512_block_data_order_shaext:
+.cfi_startproc
+	push	%rbp
+.cfi_push	%rbp
+	mov	%rsp,%rbp
+.cfi_def_cfa_register	%rbp
+.Lshaext_shortcut:
+___
+$code.=<<___ if ($win64);
+	sub	\$0x50,%rsp
+.cfi_alloca	0x50
+	movaps	%xmm6,-0x50(%rbp)
+	movaps	%xmm7,-0x40(%rbp)
+	movaps	%xmm8,-0x30(%rbp)
+	movaps	%xmm9,-0x20(%rbp)
+	movaps	%xmm10,-0x10(%rbp)
+.cfi_offset	%xmm6-%xmm10,-0x60
+___
+$code.=<<___;
+.cfi_end_prologue
+	lea		K512_nodup+0x80(%rip),$Tbl
+	vmovdqu		($ctx),@MSG[0]				# DCBA
+	vmovdqu		32($ctx),@MSG[1]			# HGFE
+	vmovdqa		-0xa0($Tbl),$BSWAP
+
+	vpermq		\$0b00011011,@MSG[0],@MSG[0]		# ABCD
+	vpblendd	\$0b00001111,@MSG[1],@MSG[0],$ABEF	# ABFE
+	vpblendd	\$0b00001111,@MSG[0],@MSG[1],$CDGH	# HGCD
+	vpermq		\$0b11100001,$ABEF,$ABEF		# ABEF
+	vpermq		\$0b01001011,$CDGH,$CDGH		# CDGH
+	jmp		.Loop_shaext
+
+.align	16
+.Loop_shaext:
+	vmovdqu		($inp),@MSG[0]
+	vmovdqu		0x20($inp),@MSG[1]
+	vmovdqu		0x40($inp),@MSG[2]
+	vpshufb		$BSWAP,@MSG[0],@MSG[0]
+	vmovdqu		0x60($inp),@MSG[3]
+
+	vpaddq		0*32-0x80($Tbl),@MSG[0],$Wi
+	vpshufb		$BSWAP,@MSG[1],@MSG[1]
+	vmovdqa		$CDGH,$CDGH_SAVE			# offload
+	vsha512rnds2	%x#$Wi,$ABEF,$CDGH			# 0-3
+	vextracti128	\$1,$Wi,%x#$Wi
+	vmovdqa		$ABEF,$ABEF_SAVE			# offload
+	vsha512rnds2	%x#$Wi,$CDGH,$ABEF
+
+	vpaddq		1*32-0x80($Tbl),@MSG[1],$Wi
+	vpshufb		$BSWAP,@MSG[2],@MSG[2]
+	vsha512rnds2	%x#$Wi,$ABEF,$CDGH			# 4-7
+	vextracti128	\$1,$Wi,%x#$Wi
+	lea		0x80($inp),$inp
+	vsha512msg1	@MSG[1],@MSG[0]
+	vsha512rnds2	%x#$Wi,$CDGH,$ABEF
+
+	vpaddq		2*32-0x80($Tbl),@MSG[2],$Wi
+	vpshufb		$BSWAP,@MSG[3],@MSG[3]
+	vsha512rnds2	%x#$Wi,$ABEF,$CDGH			# 8-11
+	vextracti128	\$1,$Wi,%x#$Wi
+	vpblendd	\$0x03,@MSG[3],@MSG[2],$TMP
+	vpermq		\$0x39,$TMP,$TMP
+	vpaddq		$TMP,@MSG[0],@MSG[0]
+	vsha512msg1	@MSG[2],@MSG[1]
+	vsha512rnds2	%x#$Wi,$CDGH,$ABEF
+
+	vpaddq		3*32-0x80($Tbl),@MSG[3],$Wi
+	vsha512msg2	@MSG[3],@MSG[0]
+	vsha512rnds2	%x#$Wi,$ABEF,$CDGH			# 12-15
+	vextracti128	\$1,$Wi,%x#$Wi
+	vpblendd	\$0x03,@MSG[0],@MSG[3],$TMP
+	vpermq		\$0x39,$TMP,$TMP
+	vpaddq		$TMP,@MSG[1],@MSG[1]
+	vsha512msg1	@MSG[3],@MSG[2]
+	vsha512rnds2	%x#$Wi,$CDGH,$ABEF
+___
+for($i=4;$i<20-3;$i++) {
+$code.=<<___;
+	vpaddq		$i*32-0x80($Tbl),@MSG[0],$Wi
+	vsha512msg2	@MSG[0],@MSG[1]
+	vsha512rnds2	%x#$Wi,$ABEF,$CDGH			# 16-19...
+	vextracti128	\$1,$Wi,%x#$Wi
+	vpblendd	\$0x03,@MSG[1],@MSG[0],$TMP
+	vpermq		\$0x39,$TMP,$TMP
+	vpaddq		$TMP,@MSG[2],@MSG[2]
+	vsha512msg1	@MSG[0],@MSG[3]
+	vsha512rnds2	%x#$Wi,$CDGH,$ABEF
+___
+	push(@MSG,shift(@MSG));
+}
+$code.=<<___;
+	vpaddq		17*32-0x80($Tbl),@MSG[0],$Wi
+	vsha512msg2	@MSG[0],@MSG[1]
+	vsha512rnds2	%x#$Wi,$ABEF,$CDGH			# 68-71
+	vextracti128	\$1,$Wi,%x#$Wi
+	vpblendd	\$0x03,@MSG[1],@MSG[0],$TMP
+	vpermq		\$0x39,$TMP,$TMP
+	vsha512rnds2	%x#$Wi,$CDGH,$ABEF
+	vpaddq		$TMP,@MSG[2],@MSG[2]
+
+	vpaddq		18*32-0x80($Tbl),@MSG[1],$Wi
+	vsha512rnds2	%x#$Wi,$ABEF,$CDGH			# 72-75
+	vextracti128	\$1,$Wi,%x#$Wi
+	vsha512msg2	@MSG[1],@MSG[2]
+	vsha512rnds2	%x#$Wi,$CDGH,$ABEF
+
+	vpaddq		19*32-0x80($Tbl),@MSG[2],$Wi
+	vsha512rnds2	%x#$Wi,$ABEF,$CDGH			# 76-79
+	vextracti128	\$1,$Wi,%x#$Wi
+	dec		$num
+	vsha512rnds2	%x#$Wi,$CDGH,$ABEF
+
+	vpaddq		$CDGH_SAVE,$CDGH,$CDGH
+	vpaddq		$ABEF_SAVE,$ABEF,$ABEF
+	jnz		.Loop_shaext
+
+	vpermq		\$0b01001011,$ABEF,$ABEF		# EFBA
+	vpblendd	\$0b11110000,$CDGH,$ABEF,@MSG[0]	# CDBA
+	vpblendd	\$0b11110000,$ABEF,$CDGH,@MSG[1]	# EFGH
+	vpermq		\$0b10110100,@MSG[0],@MSG[0]		# DCBA
+	vpermq		\$0b00011011,@MSG[1],@MSG[1]		# HGFE
+
+	vmovdqu		@MSG[0],($ctx)
+	vmovdqu		@MSG[1],32($ctx)
+
+	vzeroupper
+___
+$code.=<<___ if ($win64);
+	movaps	-0x50(%rbp),%xmm6
+	movaps	-0x40(%rbp),%xmm7
+	movaps	-0x30(%rbp),%xmm8
+	movaps	-0x20(%rbp),%xmm9
+	movaps	-0x10(%rbp),%xmm10
+	mov	%rbp,%rsp
+___
+$code.=<<___;
+.cfi_def_cfa_register	%rsp
+	pop	%rbp
+.cfi_pop	%rbp
+.cfi_epilogue
+	ret
+.cfi_endproc
+.size	sha512_block_data_order_shaext,.-sha512_block_data_order_shaext
 ___
 }}}
 {{{
@@ -2273,10 +2478,41 @@ sub sha256op38 {
     }
 }
 
+sub vsha512rnds2 {
+    my $instr = shift;
+
+    if (@_[0] =~ /%xmm([0-9]+),\s*%ymm([0-9]+),\s*%ymm([0-9]+)/) {
+      my @opcode=(0xc4,0xe2,0x7f,0xcb);
+	@opcode[1] ^= (($1>>3)<<5)|(($3>>3)<<7);
+	@opcode[2] ^= $2<<3;
+	push @opcode,0xc0|($1&7)|(($3&7)<<3);		# ModR/M
+	return ".byte\t".join(',',@opcode);
+    } else {
+	return $instr."\t".@_[0];
+    }
+}
+
+sub vsha512msg {
+    my $instr = shift;
+    my $op = shift;
+
+    if (@_[0] =~ /%[xy]mm([0-9]+),\s*%ymm([0-9]+)/) {
+      my @opcode=(0xc4,0xe2,0x7f,0xcb+$op);
+	@opcode[1] ^= (($1>>3)<<5)|(($2>>3)<<7);
+	push @opcode,0xc0|($1&7)|(($2&7)<<3);		# ModR/M
+	return ".byte\t".join(',',@opcode);
+    } else {
+	return $instr.$op."\t".@_[0];
+    }
+}
+
 foreach (split("\n",$code)) {
 	s/\`([^\`]*)\`/eval $1/geo;
+	s/%x#%[yz]/%x/go;
 
-	s/\b(sha256[^\s]*)\s+(.*)/sha256op38($1,$2)/geo;
+	s/\b(sha256[^\s]*)\s+(.*)/sha256op38($1,$2)/eo or
+	s/\b(vsha512msg)([12])\s+(.*)/vsha512msg($1,$2,$3)/eo or
+	s/\b(vsha512rnds2)\s+(.*)/vsha512rnds2($1,$2)/eo;
 
 	print $_,"\n";
 }
