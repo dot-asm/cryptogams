@@ -12,6 +12,7 @@
 # module [without big-endian option].
 #
 # 3.9 cycles per byte on U74, ~60% faster than compiler-generated code.
+# 1.9 cpb on C910, ~75% improvement.
 #
 ######################################################################
 #

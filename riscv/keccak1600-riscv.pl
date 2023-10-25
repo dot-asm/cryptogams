@@ -12,7 +12,7 @@
 # See keccak1600-mips.pl for details...
 #
 # 24 cycles per byte processed with SHA3-256 on U74, ~50% faster than
-# compiler-generated code.
+# compiler-generated code. 19.4 cpb on C910.
 #
 ######################################################################
 ($zero,$ra,$sp,$gp,$tp) = map("x$_",(0..4));

@@ -12,6 +12,14 @@
 #
 # 14.1 cycles per byte on U74 for aligned input, ~70% faster than
 # compiler-generated code. Misaligned input is processed in 16.4 cpb.
+# C910 processes one byte in 13.7 cycles.
+#
+# October 2023.
+#
+# Add a "teaser" vector implementation. It's a "teaser," because one
+# can improve it further for longer inputs. But it makes no sense to
+# invest time prior vector-capable hardware appears, so that one can
+# make suitable choices. For now it's just a qemu exercise...
 #
 ######################################################################
 #
@@ -140,6 +148,7 @@ ___
 
 $code.=<<___;
 .text
+.option	pic
 
 .type	__ChaCha,\@function
 __ChaCha:
@@ -440,6 +449,167 @@ $code.=<<___;
 	addi		$sp,$sp,$FRAMESIZE
 	ret
 .size	ChaCha20_ctr32,.-ChaCha20_ctr32
+___
+
+sub HROUND {
+my ($a, $b, $c, $d) = @_;		# v0-v3 -> $a-$d
+
+$code.=<<___
+	vadd.vv		v0, v0, v1	# a += b
+	vxor.vv		v3, v3, v0	# d ^= a
+	vsrl.vi		$d, v3, 16
+	vsll.vi		v3, v3, 16
+	vor.vv		v3, v3, $d	# d >>>= 16
+
+	vadd.vv		v2, v2, v3	# c += d
+	vxor.vv		v1, v1, v2	# b ^= c
+	vsrl.vi		$b, v1, 20
+	vsll.vi		v1, v1, 12
+	vor.vv		v1, v1, $b	# b >>>= 20
+
+	vadd.vv		$a, v0, v1	# a += b
+	vxor.vv		v3, v3, $a	# d ^= a
+	vsrl.vi		$d, v3, 24
+	vsll.vi		v3, v3, 8
+	vor.vv		$d, v3, $d	# d >>>= 24
+
+	vadd.vv		$c, v2, $d	# c += d
+	vxor.vv		v1, v1, $c	# b ^= c
+	vsrl.vi		$b, v1, 25
+	vsll.vi		v1, v1, 7
+	vor.vv		$b, v1, $b	# b >>>= 25
+___
+}
+
+$code.=<<___;
+.globl	ChaCha20_ctr32_v
+.type	ChaCha20_ctr32_v,\@function
+ChaCha20_ctr32_v:
+	lla		$t0, sigma
+	vsetivli	$zero, 4, e32
+
+	vle32.v		v8, ($t0)	# a'
+	addi		$t1, $key, 16
+	vle32.v		v9, ($key)	# b'
+	vle32.v		v10, ($t1)	# c'
+	vle32.v		v11, ($counter)	# d'
+
+	addi		$t1, $t0, 16
+	addi		$t2, $t0, 32
+	addi		$t3, $t0, 48
+	vle32.v		v12, ($t1)
+	vle32.v		v13, ($t2)
+	vle32.v		v14, ($t3)
+	vmv.x.s		$counter, v11	# put aside the 32-bit counter value
+	li		$t0, 64
+	j		.Loop_enter_v
+
+.Loop_outer_v:
+	addi		$counter, $counter, 1
+	vsetivli	zero, 4, e32
+	vmv.s.x		v11, $counter	# d'
+.Loop_enter_v:
+	vmv.v.v		v0, v8		# a = a'
+	vmv.v.v		v1, v9		# b = b'
+	vmv.v.v		v2, v10		# c = c'
+	vmv.v.v		v3, v11		# d = d'
+	li		$a5, 10
+.Loop_v:
+___
+	&HROUND(map("v$_", (0,5..7)));
+$code.=<<___;
+	vrgather.vv	v1, v5, v12	# b >>>= 32
+	vrgather.vv	v2, v6, v13	# c >>>= 64
+	vrgather.vv	v3, v7, v14	# d >>>= 96
+___
+	&HROUND(map("v$_", (0,5..7)));
+$code.=<<___;
+	vrgather.vv	v1, v5, v14	# b >>>= 96
+	vrgather.vv	v2, v6, v13	# c >>>= 64
+	vrgather.vv	v3, v7, v12	# d >>>= 32
+
+	addi		$a5, $a5, -1
+	bnez		$a5, .Loop_v
+
+	vadd.vv		v0, v0, v8	# a += a'
+	vadd.vv		v1, v1, v9	# b += b'
+	vadd.vv		v2, v2, v10	# c += c'
+	vadd.vv		v3, v3, v11	# d += d'
+
+	vsetivli	zero, 16, e8
+	bltu		$len, $t0, .Ltail_v
+
+	addi		$t1, $inp, 16
+	addi		$t2, $inp, 32
+	addi		$t3, $inp, 48
+	vle8.v		v4, ($inp)
+	addi		$inp, $inp, 64
+	addi		$len, $len, -64
+	vle8.v		v5, ($t1)
+	addi		$t1, $out, 16
+	vle8.v		v6, ($t2)
+	addi		$t2, $out, 32
+	vle8.v		v7, ($t3)
+	addi		$t3, $out, 48
+	vxor.vv		v4, v4, v0
+	vxor.vv		v5, v5, v1
+	vxor.vv		v6, v6, v2
+	vxor.vv		v7, v7, v3
+	vse8.v		v4, ($out)
+	addi		$out, $out, 64
+	vse8.v		v5, ($t1)
+	vse8.v		v6, ($t2)
+	vse8.v		v7, ($t3)
+	bnez		$len, .Loop_outer_v
+
+	ret
+
+.Ltail_v:
+	li		$t0, 16
+	bleu		$len, $t0, .Last_v
+
+	vle8.v		v4, ($inp)
+	addi		$inp, $inp, 16
+	addi		$len, $len, -16
+	vxor.vv		v4, v4, v0
+	vmv.v.v		v0, v1
+	vse8.v		v4, ($out)
+	addi		$out, $out, 16
+	bleu		$len, $t0, .Last_v
+
+	vle8.v		v5, ($inp)
+	addi		$inp, $inp, 16
+	addi		$len, $len, -16
+	vxor.vv		v5, v5, v1
+	vmv.v.v		v0, v2
+	vse8.v		v5, ($out)
+	addi		$out, $out, 16
+	bleu		$len, $t0, .Last_v
+
+	vle8.v		v6, ($inp)
+	addi		$inp, $inp, 16
+	addi		$len, $len, -16
+	vxor.vv		v6, v6, v2
+	vmv.v.v		v0, v3
+	vse8.v		v6, ($out)
+	addi		$out, $out, 16
+
+.Last_v:
+	vsetvli		zero, $len, e8
+	vle8.v		v4, ($inp)
+	vxor.vv		v4, v4, v0
+	vse8.v		v4, ($out)
+
+	ret
+.size	ChaCha20_ctr32_v,.-ChaCha20_ctr32_v
+
+.section	.rodata
+.align	4
+sigma:
+.word	0x61707865, 0x3320646e, 0x79622d32, 0x6b206574
+.word	1,2,3,0,    2,3,0,1,    3,0,1,2,    0,0,0,0
+.string	"ChaCha20 for RISC-V, CRYPTOGAMS by \@dot-asm"
+
 ___
 
 print $code;
