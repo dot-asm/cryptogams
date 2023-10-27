@@ -28,24 +28,6 @@
 ($s0,$s1,$s2,$s3,$s4,$s5,$s6,$s7,$s8,$s9,$s10,$s11)=map("x$_",(8,9,18..27));
 ($t0,$t1,$t2,$t3,$t4,$t5,$t6)=map("x$_",(5..7, 28..31));
 #
-$flavour = shift || "64";
-
-if ($flavour =~ /64/) {
-	$REG_S="sd";
-	$REG_L="ld";
-	$SRL="srlw";
-	$SZREG=8;
-} else {
-	$REG_S="sw";
-	$REG_L="lw";
-	$PTR_SLL="sll";
-	$SRL="srl";
-	$SZREG=4;
-}
-
-$FRAMESIZE=64+16*$SZREG;
-$SAVED_REGS_MASK = ($flavour =~ /nubi/i) ? "0xc0fff008" : "0xc0ff0000";
-#
 ######################################################################
 
 my @x = map("x$_",(16..31));
@@ -68,10 +50,16 @@ $code.=<<___;
 	 xor		@x[$d1],@x[$d1],@x[$a1]
 	  xor		@x[$d2],@x[$d2],@x[$a2]
 	   xor		@x[$d3],@x[$d3],@x[$a3]
-	$SRL		@y[0],@x[$d0],16
-	 $SRL		@y[1],@x[$d1],16
-	  $SRL		@y[2],@x[$d2],16
-	   $SRL		@y[3],@x[$d3],16
+#ifdef	__riscv_zbb
+	rorw		@x[$d0],@x[$d0],16
+	 rorw		@x[$d1],@x[$d1],16
+	  rorw		@x[$d2],@x[$d2],16
+	   rorw		@x[$d3],@x[$d3],16
+#else
+	srlw		@y[0],@x[$d0],16
+	 srlw		@y[1],@x[$d1],16
+	  srlw		@y[2],@x[$d2],16
+	   srlw		@y[3],@x[$d3],16
 	sll		@x[$d0],@x[$d0],16
 	 sll		@x[$d1],@x[$d1],16
 	  sll		@x[$d2],@x[$d2],16
@@ -80,6 +68,7 @@ $code.=<<___;
 	 or		@x[$d1],@x[$d1],@y[1]
 	  or		@x[$d2],@x[$d2],@y[2]
 	   or		@x[$d3],@x[$d3],@y[3]
+#endif
 
 	add		@x[$c0],@x[$c0],@x[$d0]
 	 add		@x[$c1],@x[$c1],@x[$d1]
@@ -89,10 +78,16 @@ $code.=<<___;
 	 xor		@x[$b1],@x[$b1],@x[$c1]
 	  xor		@x[$b2],@x[$b2],@x[$c2]
 	   xor		@x[$b3],@x[$b3],@x[$c3]
-	$SRL		@y[0],@x[$b0],20
-	 $SRL		@y[1],@x[$b1],20
-	  $SRL		@y[2],@x[$b2],20
-	   $SRL		@y[3],@x[$b3],20
+#ifdef	__riscv_zbb
+	rorw		@x[$b0],@x[$b0],20
+	 rorw		@x[$b1],@x[$b1],20
+	  rorw		@x[$b2],@x[$b2],20
+	   rorw		@x[$b3],@x[$b3],20
+#else
+	srlw		@y[0],@x[$b0],20
+	 srlw		@y[1],@x[$b1],20
+	  srlw		@y[2],@x[$b2],20
+	   srlw		@y[3],@x[$b3],20
 	sll		@x[$b0],@x[$b0],12
 	 sll		@x[$b1],@x[$b1],12
 	  sll		@x[$b2],@x[$b2],12
@@ -101,6 +96,7 @@ $code.=<<___;
 	 or		@x[$b1],@x[$b1],@y[1]
 	  or		@x[$b2],@x[$b2],@y[2]
 	   or		@x[$b3],@x[$b3],@y[3]
+#endif
 
 	add		@x[$a0],@x[$a0],@x[$b0]
 	 add		@x[$a1],@x[$a1],@x[$b1]
@@ -110,10 +106,16 @@ $code.=<<___;
 	 xor		@x[$d1],@x[$d1],@x[$a1]
 	  xor		@x[$d2],@x[$d2],@x[$a2]
 	   xor		@x[$d3],@x[$d3],@x[$a3]
-	$SRL		@y[0],@x[$d0],24
-	 $SRL		@y[1],@x[$d1],24
-	  $SRL		@y[2],@x[$d2],24
-	   $SRL		@y[3],@x[$d3],24
+#ifdef	__riscv_zbb
+	rorw		@x[$d0],@x[$d0],24
+	 rorw		@x[$d1],@x[$d1],24
+	  rorw		@x[$d2],@x[$d2],24
+	   rorw		@x[$d3],@x[$d3],24
+#else
+	srlw		@y[0],@x[$d0],24
+	 srlw		@y[1],@x[$d1],24
+	  srlw		@y[2],@x[$d2],24
+	   srlw		@y[3],@x[$d3],24
 	sll		@x[$d0],@x[$d0],8
 	 sll		@x[$d1],@x[$d1],8
 	  sll		@x[$d2],@x[$d2],8
@@ -122,6 +124,7 @@ $code.=<<___;
 	 or		@x[$d1],@x[$d1],@y[1]
 	  or		@x[$d2],@x[$d2],@y[2]
 	   or		@x[$d3],@x[$d3],@y[3]
+#endif
 
 	add		@x[$c0],@x[$c0],@x[$d0]
 	 add		@x[$c1],@x[$c1],@x[$d1]
@@ -131,10 +134,16 @@ $code.=<<___;
 	 xor		@x[$b1],@x[$b1],@x[$c1]
 	  xor		@x[$b2],@x[$b2],@x[$c2]
 	   xor		@x[$b3],@x[$b3],@x[$c3]
-	$SRL		@y[0],@x[$b0],25
-	 $SRL		@y[1],@x[$b1],25
-	  $SRL		@y[2],@x[$b2],25
-	   $SRL		@y[3],@x[$b3],25
+#ifdef	__riscv_zbb
+	rorw		@x[$b0],@x[$b0],25
+	 rorw		@x[$b1],@x[$b1],25
+	  rorw		@x[$b2],@x[$b2],25
+	   rorw		@x[$b3],@x[$b3],25
+#else
+	srlw		@y[0],@x[$b0],25
+	 srlw		@y[1],@x[$b1],25
+	  srlw		@y[2],@x[$b2],25
+	   srlw		@y[3],@x[$b3],25
 	sll		@x[$b0],@x[$b0],7
 	 sll		@x[$b1],@x[$b1],7
 	  sll		@x[$b2],@x[$b2],7
@@ -143,10 +152,23 @@ $code.=<<___;
 	 or		@x[$b1],@x[$b1],@y[1]
 	  or		@x[$b2],@x[$b2],@y[2]
 	   or		@x[$b3],@x[$b3],@y[3]
+#endif
 ___
 }
 
 $code.=<<___;
+#if __riscv_xlen == 32
+# define PUSH	sw
+# define POP	lw
+# define srlw	srl
+# define rorw	ror
+#else
+# define PUSH	sd
+# define POP	ld
+#endif
+#define __SIZEOF_REG_T__	(__riscv_xlen/8)
+#define FRAMESIZE		(64+16*__SIZEOF_REG_T__)
+
 .text
 .option	pic
 
@@ -214,20 +236,20 @@ $code.=<<___;
 .globl	ChaCha20_ctr32
 .type	ChaCha20_ctr32,\@function
 ChaCha20_ctr32:
-	addi		$sp,$sp,-$FRAMESIZE
-	$REG_S		$ra, ($FRAMESIZE-1*$SZREG)($sp)
-	$REG_S		$s0, ($FRAMESIZE-2*$SZREG)($sp)
-	$REG_S		$s1, ($FRAMESIZE-3*$SZREG)($sp)
-	$REG_S		$s2, ($FRAMESIZE-4*$SZREG)($sp)
-	$REG_S		$s3, ($FRAMESIZE-5*$SZREG)($sp)
-	$REG_S		$s4, ($FRAMESIZE-6*$SZREG)($sp)
-	$REG_S		$s5, ($FRAMESIZE-7*$SZREG)($sp)
-	$REG_S		$s6, ($FRAMESIZE-8*$SZREG)($sp)
-	$REG_S		$s7, ($FRAMESIZE-9*$SZREG)($sp)
-	$REG_S		$s8, ($FRAMESIZE-10*$SZREG)($sp)
-	$REG_S		$s9, ($FRAMESIZE-11*$SZREG)($sp)
-	$REG_S		$s10,($FRAMESIZE-12*$SZREG)($sp)
-	$REG_S		$s11,($FRAMESIZE-13*$SZREG)($sp)
+	addi		$sp,$sp,-FRAMESIZE
+	PUSH		$ra, (FRAMESIZE-1*__SIZEOF_REG_T__)($sp)
+	PUSH		$s0, (FRAMESIZE-2*__SIZEOF_REG_T__)($sp)
+	PUSH		$s1, (FRAMESIZE-3*__SIZEOF_REG_T__)($sp)
+	PUSH		$s2, (FRAMESIZE-4*__SIZEOF_REG_T__)($sp)
+	PUSH		$s3, (FRAMESIZE-5*__SIZEOF_REG_T__)($sp)
+	PUSH		$s4, (FRAMESIZE-6*__SIZEOF_REG_T__)($sp)
+	PUSH		$s5, (FRAMESIZE-7*__SIZEOF_REG_T__)($sp)
+	PUSH		$s6, (FRAMESIZE-8*__SIZEOF_REG_T__)($sp)
+	PUSH		$s7, (FRAMESIZE-9*__SIZEOF_REG_T__)($sp)
+	PUSH		$s8, (FRAMESIZE-10*__SIZEOF_REG_T__)($sp)
+	PUSH		$s9, (FRAMESIZE-11*__SIZEOF_REG_T__)($sp)
+	PUSH		$s10,(FRAMESIZE-12*__SIZEOF_REG_T__)($sp)
+	PUSH		$s11,(FRAMESIZE-13*__SIZEOF_REG_T__)($sp)
 
 	lui		@x[0],0x61707+1		# compose sigma
 	lui		@x[1],0x33206
@@ -433,20 +455,20 @@ $code.=<<___;
 	j		.Last_word
 
 .Ldone:
-	$REG_L		$ra, ($FRAMESIZE-1*$SZREG)($sp)
-	$REG_L		$s0, ($FRAMESIZE-2*$SZREG)($sp)
-	$REG_L		$s1, ($FRAMESIZE-3*$SZREG)($sp)
-	$REG_L		$s2, ($FRAMESIZE-4*$SZREG)($sp)
-	$REG_L		$s3, ($FRAMESIZE-5*$SZREG)($sp)
-	$REG_L		$s4, ($FRAMESIZE-6*$SZREG)($sp)
-	$REG_L		$s5, ($FRAMESIZE-7*$SZREG)($sp)
-	$REG_L		$s6, ($FRAMESIZE-8*$SZREG)($sp)
-	$REG_L		$s7, ($FRAMESIZE-9*$SZREG)($sp)
-	$REG_L		$s8, ($FRAMESIZE-10*$SZREG)($sp)
-	$REG_L		$s9, ($FRAMESIZE-11*$SZREG)($sp)
-	$REG_L		$s10,($FRAMESIZE-12*$SZREG)($sp)
-	$REG_L		$s11,($FRAMESIZE-13*$SZREG)($sp)
-	addi		$sp,$sp,$FRAMESIZE
+	POP		$ra, (FRAMESIZE-1*__SIZEOF_REG_T__)($sp)
+	POP		$s0, (FRAMESIZE-2*__SIZEOF_REG_T__)($sp)
+	POP		$s1, (FRAMESIZE-3*__SIZEOF_REG_T__)($sp)
+	POP		$s2, (FRAMESIZE-4*__SIZEOF_REG_T__)($sp)
+	POP		$s3, (FRAMESIZE-5*__SIZEOF_REG_T__)($sp)
+	POP		$s4, (FRAMESIZE-6*__SIZEOF_REG_T__)($sp)
+	POP		$s5, (FRAMESIZE-7*__SIZEOF_REG_T__)($sp)
+	POP		$s6, (FRAMESIZE-8*__SIZEOF_REG_T__)($sp)
+	POP		$s7, (FRAMESIZE-9*__SIZEOF_REG_T__)($sp)
+	POP		$s8, (FRAMESIZE-10*__SIZEOF_REG_T__)($sp)
+	POP		$s9, (FRAMESIZE-11*__SIZEOF_REG_T__)($sp)
+	POP		$s10,(FRAMESIZE-12*__SIZEOF_REG_T__)($sp)
+	POP		$s11,(FRAMESIZE-13*__SIZEOF_REG_T__)($sp)
+	addi		$sp,$sp,FRAMESIZE
 	ret
 .size	ChaCha20_ctr32,.-ChaCha20_ctr32
 ___
@@ -482,6 +504,7 @@ ___
 }
 
 $code.=<<___;
+#if defined(__riscv_v) && __riscv_v >= 1000000
 .globl	ChaCha20_ctr32_v
 .type	ChaCha20_ctr32_v,\@function
 ChaCha20_ctr32_v:
@@ -602,6 +625,7 @@ $code.=<<___;
 
 	ret
 .size	ChaCha20_ctr32_v,.-ChaCha20_ctr32_v
+#endif
 
 .section	.rodata
 .align	4
@@ -609,7 +633,6 @@ sigma:
 .word	0x61707865, 0x3320646e, 0x79622d32, 0x6b206574
 .word	1,2,3,0,    2,3,0,1,    3,0,1,2,    0,0,0,0
 .string	"ChaCha20 for RISC-V, CRYPTOGAMS by \@dot-asm"
-
 ___
 
 print $code;
