@@ -474,32 +474,32 @@ $code.=<<___;
 ___
 
 sub HROUND {
-my ($a, $b, $c, $d) = @_;		# v0-v3 -> $a-$d
+my ($a, $b, $c, $d, $t) = @_;
 
 $code.=<<___
-	vadd.vv		v0, v0, v1	# a += b
-	vxor.vv		v3, v3, v0	# d ^= a
-	vsrl.vi		$d, v3, 16
-	vsll.vi		v3, v3, 16
-	vor.vv		v3, v3, $d	# d >>>= 16
+	vadd.vv		$a, $a, $b	# a += b
+	vxor.vv		$d, $d, $a	# d ^= a
+	vsrl.vi		$t, $d, 16
+	vsll.vi		$d, $d, 16
+	vor.vv		$d, $d, $t	# d >>>= 16
 
-	vadd.vv		v2, v2, v3	# c += d
-	vxor.vv		v1, v1, v2	# b ^= c
-	vsrl.vi		$b, v1, 20
-	vsll.vi		v1, v1, 12
-	vor.vv		v1, v1, $b	# b >>>= 20
+	vadd.vv		$c, $c, $d	# c += d
+	vxor.vv		$b, $b, $c	# b ^= c
+	vsrl.vi		$t, $b, 20
+	vsll.vi		$b, $b, 12
+	vor.vv		$b, $b, $t	# b >>>= 20
 
-	vadd.vv		$a, v0, v1	# a += b
-	vxor.vv		v3, v3, $a	# d ^= a
-	vsrl.vi		$d, v3, 24
-	vsll.vi		v3, v3, 8
-	vor.vv		$d, v3, $d	# d >>>= 24
+	vadd.vv		$a, $a, $b	# a += b
+	vxor.vv		$d, $d, $a	# d ^= a
+	vsrl.vi		$t, $d, 24
+	vsll.vi		$d, $d, 8
+	vor.vv		$d, $d, $t	# d >>>= 24
 
-	vadd.vv		$c, v2, $d	# c += d
-	vxor.vv		v1, v1, $c	# b ^= c
-	vsrl.vi		$b, v1, 25
-	vsll.vi		v1, v1, 7
-	vor.vv		$b, v1, $b	# b >>>= 25
+	vadd.vv		$c, $c, $d	# c += d
+	vxor.vv		$b, $b, $c	# b ^= c
+	vsrl.vi		$t, $b, 25
+	vsll.vi		$b, $b, 7
+	vor.vv		$b, $b, $t	# b >>>= 25
 ___
 }
 
@@ -539,17 +539,17 @@ ChaCha20_ctr32_v:
 	li		$a5, 10
 .Loop_v:
 ___
-	&HROUND(map("v$_", (0,5..7)));
+	&HROUND(map("v$_", (0..3,4)));
 $code.=<<___;
-	vrgather.vv	v1, v5, v12	# b >>>= 32
-	vrgather.vv	v2, v6, v13	# c >>>= 64
-	vrgather.vv	v3, v7, v14	# d >>>= 96
+	vrgather.vv	v4, v1, v12	# b >>>= 32
+	vrgather.vv	v5, v2, v13	# c >>>= 64
+	vrgather.vv	v6, v3, v14	# d >>>= 96
 ___
-	&HROUND(map("v$_", (0,5..7)));
+	&HROUND(map("v$_", (0,4..6,1)));
 $code.=<<___;
-	vrgather.vv	v1, v5, v14	# b >>>= 96
-	vrgather.vv	v2, v6, v13	# c >>>= 64
-	vrgather.vv	v3, v7, v12	# d >>>= 32
+	vrgather.vv	v1, v4, v14	# b >>>= 96
+	vrgather.vv	v2, v5, v13	# c >>>= 64
+	vrgather.vv	v3, v6, v12	# d >>>= 32
 
 	addi		$a5, $a5, -1
 	bnez		$a5, .Loop_v
