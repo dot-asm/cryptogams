@@ -1067,33 +1067,53 @@ __KeccakF1600:
 	xor	@C[8], @C[8], @D[8]
 	xor	@C[9], @C[9], @D[9]
 
+#ifdef	__riscv_zbb
+	rorw	@D[2], @C[5], 31
+#else
 	srlw	@T[0], @C[5], 31
 	add	@D[2], @C[5], @C[5]
 	or	@D[2], @D[2], @T[0]
+#endif
 	xor	@D[3], @C[4], @C[1]
 	xor	@D[2], @D[2], @C[0]	# D[1] = ROL64(C[2], 1) ^ C[0];
 
+#ifdef	__riscv_zbb
+	rorw	@D[4], @C[7], 31
+#else
 	srlw	@T[1], @C[7], 31
 	add	@D[4], @C[7], @C[7]
 	or	@D[4], @D[4], @T[1]
+#endif
 	xor	@D[5], @C[6], @C[3]
 	xor	@D[4], @D[4], @C[2]	# D[2] = ROL64(C[3], 1) ^ C[1];
 
+#ifdef	__riscv_zbb
+	rorw	@D[6], @C[9], 31
+#else
 	srlw	@T[0], @C[9], 31
 	add	@D[6], @C[9], @C[9]
 	or	@D[6], @D[6], @T[0]
+#endif
 	xor	@D[7], @C[8], @C[5]
 	xor	@D[6], @D[6], @C[4]	# D[3] = ROL64(C[4], 1) ^ C[2];
 
+#ifdef	__riscv_zbb
+	rorw	@D[8], @C[1], 31
+#else
 	srlw	@T[1], @C[1], 31
 	add	@D[8], @C[1], @C[1]
 	or	@D[8], @D[8], @T[1]
+#endif
 	xor	@D[9], @C[0], @C[7]
 	xor	@D[8], @D[8], @C[6]	# D[4] = ROL64(C[0], 1) ^ C[3];
 
+#ifdef	__riscv_zbb
+	rorw	@D[0], @C[3], 31
+#else
 	srlw	@T[0], @C[3], 31
 	add	@D[0], @C[3], @C[3]
 	or	@D[0], @D[0], @T[0]
+#endif
 	xor	@D[1], @C[2], @C[9]
 	xor	@D[0], @D[0], @C[8]	# D[0] = ROL64(C[1], 1) ^ C[4];
 
@@ -1121,6 +1141,16 @@ __KeccakF1600:
 	xor	@C[8], @C[8], @D[8]
 	xor	@C[9], @C[9], @D[9]
 
+#ifdef	__riscv_zbb
+	rorw	@C[2], @C[2], 32-22
+	rorw	@C[3], @C[3], 32-22
+	rorw	@C[4], @C[4], 31-21
+	rorw	@C[5], @C[5], 32-21
+	rorw	@C[6], @C[6], 31-10
+	rorw	@C[7], @C[7], 32-10
+	rorw	@C[8], @C[8], 32-7
+	rorw	@C[9], @C[9], 32-7
+#else
 	srlw	@T[0], @C[2], 32-22
 	sllw	@C[2], @C[2], 22
 	srlw	@T[1], @C[3], 32-22
@@ -1145,6 +1175,7 @@ __KeccakF1600:
 	sllw	@C[9], @C[9], 7
 	or	@C[8], @C[8], @T[0]
 	or	@C[9], @C[9], @T[1]
+#endif
 
 	or	@T[0], @C[2], @C[4]
 	or	@T[1], @C[3], @C[5]
@@ -1202,6 +1233,18 @@ __KeccakF1600:
 	xor	@C[8], @C[8], @D[5]	# flip order
 	xor	@C[9], @C[9], @D[4]
 
+#ifdef	__riscv_zbb
+	rorw	@C[0], @C[0], 32-14
+	rorw	@C[1], @C[1], 32-14
+	rorw	@C[2], @C[2], 32-10
+	rorw	@C[3], @C[3], 32-10
+	rorw	@C[4], @C[4], 31-1
+	rorw	@C[5], @C[5], 32-1
+	rorw	@C[6], @C[6], 31-22
+	rorw	@C[7], @C[7], 32-22
+	rorw	@C[8], @C[8], 31-30
+	rorw	@C[9], @C[9], 32-30
+#else
 	srlw	@T[0], @C[0], 32-14
 	sllw	@C[0], @C[0], 14
 	srlw	@T[1], @C[1], 32-14
@@ -1232,6 +1275,7 @@ __KeccakF1600:
 	sllw	@C[9], @C[9], 30
 	or	@C[8], @C[8], @T[0]
 	or	@C[9], @C[9], @T[1]
+#endif
 
 	or	@T[0], @C[2], @C[4]
 	or	@T[1], @C[3], @C[5]
@@ -1287,6 +1331,18 @@ __KeccakF1600:
 	xor	@C[8], @C[8], @D[0]
 	xor	@C[9], @C[9], @D[1]
 
+#ifdef	__riscv_zbb
+	rorw	@C[0], @C[0], 31-0
+	#rorw	@C[1], @C[1], 32-0
+	rorw	@C[2], @C[2], 32-3
+	rorw	@C[3], @C[3], 32-3
+	rorw	@C[4], @C[4], 31-12
+	rorw	@C[5], @C[5], 32-12
+	rorw	@C[6], @C[6], 32-4
+	rorw	@C[7], @C[7], 32-4
+	rorw	@C[8], @C[8], 32-9
+	rorw	@C[9], @C[9], 32-9
+#else
 	srlw	@T[0], @C[0], 31-0
 	sllw	@C[0], @C[0], 1
 	#srlw	@T[1], @C[1], 32-0
@@ -1317,6 +1373,7 @@ __KeccakF1600:
 	sllw	@C[9], @C[9], 9
 	or	@C[8], @C[8], @T[0]
 	or	@C[9], @C[9], @T[1]
+#endif
 
 	or	@T[0], @C[2], @C[4]
 	or	@T[1], @C[3], @C[5]
@@ -1372,6 +1429,18 @@ __KeccakF1600:
 	xor	@C[8], @C[8], @D[6]
 	xor	@C[9], @C[9], @D[7]
 
+#ifdef	__riscv_zbb
+	rorw	@C[0], @C[0], 31-13
+	rorw	@C[1], @C[1], 32-13
+	rorw	@C[2], @C[2], 32-18
+	rorw	@C[3], @C[3], 32-18
+	rorw	@C[4], @C[4], 32-5
+	rorw	@C[5], @C[5], 32-5
+	rorw	@C[6], @C[6], 31-7
+	rorw	@C[7], @C[7], 32-7
+	rorw	@C[8], @C[8], 32-28
+	rorw	@C[9], @C[9], 32-28
+#else
 	srlw	@T[0], @C[0], 31-13
 	sllw	@C[0], @C[0], 14
 	srlw	@T[1], @C[1], 32-13
@@ -1402,6 +1471,7 @@ __KeccakF1600:
 	sllw	@C[9], @C[9], 28
 	or	@C[8], @C[8], @T[0]
 	or	@C[9], @C[9], @T[1]
+#endif
 
 	and	@T[0], @C[2], @C[4]
 	and	@T[1], @C[3], @C[5]
@@ -1460,6 +1530,18 @@ __KeccakF1600:
 	xor	@C[8], @C[8], @D[2]
 	xor	@C[9], @C[9], @D[3]
 
+#ifdef	__riscv_zbb
+	rorw	@C[0], @C[0], 32-31
+	rorw	@C[1], @C[1], 32-31
+	rorw	@C[2], @C[2], 31-27
+	rorw	@C[3], @C[3], 32-27
+	rorw	@C[4], @C[4], 31-19
+	rorw	@C[5], @C[5], 32-19
+	rorw	@C[6], @C[6], 31-20
+	rorw	@C[7], @C[7], 32-20
+	rorw	@C[8], @C[8], 32-1
+	rorw	@C[9], @C[9], 32-1
+#else
 	srlw	@T[0], @C[0], 32-31
 	sllw	@C[0], @C[0], 31
 	srlw	@T[1], @C[1], 32-31
@@ -1490,6 +1572,7 @@ __KeccakF1600:
 	sllw	@C[9], @C[9], 1
 	or	@C[8], @C[8], @T[0]
 	or	@C[9], @C[9], @T[1]
+#endif
 
 	not	@T[2], @C[2]
 	not	@T[3], @C[3]
