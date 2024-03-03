@@ -970,10 +970,9 @@ $code.=<<___;
 .type	__KeccakF1600, \@function
 __KeccakF1600:
 	addi	$sp, $sp, -224
-	PUSH	$ra, 224-__SIZEOF_REG_T__*1($sp)
 
 	mv	$a1, $sp
-	lla	$ra, iotas
+	lla	$t0, iotas
 	lw	@D[0], $A[4][0]+0($a0)
 	lw	@D[1], $A[4][0]+4($a0)
 	lw	@D[2], $A[4][1]+0($a0)
@@ -1069,53 +1068,70 @@ __KeccakF1600:
 
 #ifdef	__riscv_zbb
 	rorw	@D[2], @C[5], 31
-#else
-	srlw	@T[0], @C[5], 31
-	add	@D[2], @C[5], @C[5]
-	or	@D[2], @D[2], @T[0]
-#endif
 	xor	@D[3], @C[4], @C[1]
 	xor	@D[2], @D[2], @C[0]	# D[1] = ROL64(C[2], 1) ^ C[0];
 
-#ifdef	__riscv_zbb
 	rorw	@D[4], @C[7], 31
-#else
-	srlw	@T[1], @C[7], 31
-	add	@D[4], @C[7], @C[7]
-	or	@D[4], @D[4], @T[1]
-#endif
 	xor	@D[5], @C[6], @C[3]
 	xor	@D[4], @D[4], @C[2]	# D[2] = ROL64(C[3], 1) ^ C[1];
 
-#ifdef	__riscv_zbb
 	rorw	@D[6], @C[9], 31
-#else
-	srlw	@T[0], @C[9], 31
-	add	@D[6], @C[9], @C[9]
-	or	@D[6], @D[6], @T[0]
-#endif
 	xor	@D[7], @C[8], @C[5]
 	xor	@D[6], @D[6], @C[4]	# D[3] = ROL64(C[4], 1) ^ C[2];
 
-#ifdef	__riscv_zbb
 	rorw	@D[8], @C[1], 31
-#else
-	srlw	@T[1], @C[1], 31
-	add	@D[8], @C[1], @C[1]
-	or	@D[8], @D[8], @T[1]
-#endif
 	xor	@D[9], @C[0], @C[7]
 	xor	@D[8], @D[8], @C[6]	# D[4] = ROL64(C[0], 1) ^ C[3];
 
-#ifdef	__riscv_zbb
 	rorw	@D[0], @C[3], 31
-#else
-	srlw	@T[0], @C[3], 31
-	add	@D[0], @C[3], @C[3]
-	or	@D[0], @D[0], @T[0]
-#endif
 	xor	@D[1], @C[2], @C[9]
 	xor	@D[0], @D[0], @C[8]	# D[0] = ROL64(C[1], 1) ^ C[4];
+#else
+	srlw	@T[0], @C[4], 31
+	add	@T[1], @C[5], @C[5]
+	srlw	@T[2], @C[5], 31
+	add	@T[3], @C[4], @C[4]
+	or	@D[3], @T[1], @T[0]
+	or	@D[2], @T[3], @T[2]
+	xor	@D[3], @D[3], @C[1]
+	xor	@D[2], @D[2], @C[0]	# D[1] = ROL64(C[2], 1) ^ C[0];
+
+	srlw	@T[0], @C[6], 31
+	add	@T[1], @C[7], @C[7]
+	srlw	@T[2], @C[7], 31
+	add	@T[3], @C[6], @C[6]
+	or	@D[5], @T[1], @T[0]
+	or	@D[4], @T[3], @T[2]
+	xor	@D[5], @D[5], @C[3]
+	xor	@D[4], @D[4], @C[2]	# D[2] = ROL64(C[3], 1) ^ C[1];
+
+	srlw	@T[0], @C[8], 31
+	add	@T[1], @C[9], @C[9]
+	srlw	@T[2], @C[9], 31
+	add	@T[3], @C[8], @C[8]
+	or	@D[7], @T[1], @T[0]
+	or	@D[6], @T[3], @T[2]
+	xor	@D[7], @D[7], @C[5]
+	xor	@D[6], @D[6], @C[4]	# D[3] = ROL64(C[4], 1) ^ C[2];
+
+	srlw	@T[0], @C[0], 31
+	add	@T[1], @C[1], @C[1]
+	srlw	@T[2], @C[1], 31
+	add	@T[3], @C[0], @C[0]
+	or	@D[9], @T[1], @T[0]
+	or	@D[8], @T[3], @T[2]
+	xor	@D[9], @D[9], @C[7]
+	xor	@D[8], @D[8], @C[6]	# D[4] = ROL64(C[0], 1) ^ C[3];
+
+	srlw	@T[0], @C[2], 31
+	add	@T[1], @C[3], @C[3]
+	srlw	@T[2], @C[3], 31
+	add	@T[3], @C[2], @C[2]
+	or	@D[1], @T[1], @T[0]
+	or	@D[0], @T[3], @T[2]
+	xor	@D[1], @D[1], @C[9]
+	xor	@D[0], @D[0], @C[8]	# D[0] = ROL64(C[1], 1) ^ C[4];
+#endif
 
 	lw	@C[0], $A[0][0]+0($a0)
 	lw	@C[1], $A[0][0]+4($a0)
@@ -1134,47 +1150,54 @@ __KeccakF1600:
 	xor	@C[5], @C[5], @D[4]
 	lw	@C[9], $A[4][4]+4($a0)
 	xor	@C[6], @C[6], @D[7]	# flip order
-	 lw	@T[2], 0(ra)		# *iotas++
 	xor	@C[7], @C[7], @D[6]
-	 lw	@T[3], 4($ra)
-	 add	$ra, $ra, 8
 	xor	@C[8], @C[8], @D[8]
 	xor	@C[9], @C[9], @D[9]
 
 #ifdef	__riscv_zbb
 	rorw	@C[2], @C[2], 32-22
+	 lw	@T[2], 0($t0)		# *iotas++
 	rorw	@C[3], @C[3], 32-22
+	 lw	@T[3], 4($t0)
 	rorw	@C[4], @C[4], 31-21
+	 add	$t0, $t0, 8
 	rorw	@C[5], @C[5], 32-21
 	rorw	@C[6], @C[6], 31-10
 	rorw	@C[7], @C[7], 32-10
 	rorw	@C[8], @C[8], 32-7
 	rorw	@C[9], @C[9], 32-7
 #else
-	srlw	@T[0], @C[2], 32-22
-	sllw	@C[2], @C[2], 22
-	srlw	@T[1], @C[3], 32-22
-	sllw	@C[3], @C[3], 22
-	or	@C[2], @C[2], @T[0]
-	or	@C[3], @C[3], @T[1]
-	srlw	@T[0], @C[4], 31-21
-	sllw	@C[4], @C[4], 22
-	srlw	@T[1], @C[5], 32-21
-	sllw	@C[5], @C[5], 21
-	or	@C[4], @C[4], @T[0]
-	or	@C[5], @C[5], @T[1]
-	srlw	@T[0], @C[6], 31-10
-	sllw	@C[6], @C[6], 11
-	srlw	@T[1], @C[7], 32-10
-	sllw	@C[7], @C[7], 10
-	or	@C[6], @C[6], @T[0]
-	or	@C[7], @C[7], @T[1]
-	srlw	@T[0], @C[8], 32-7
-	sllw	@C[8], @C[8], 7
-	srlw	@T[1], @C[9], 32-7
-	sllw	@C[9], @C[9], 7
-	or	@C[8], @C[8], @T[0]
-	or	@C[9], @C[9], @T[1]
+	sllw	@T[0], @C[3], 12
+	srlw	@T[1], @C[2], 32-12
+	sllw	@T[2], @C[2], 12
+	srlw	@T[3], @C[3], 32-12
+	or	@C[2], @T[1], @T[0]
+	or	@C[3], @T[3], @T[2]	# C[1] = ROL64(A[1][1], 44)
+
+	sllw	@T[0], @C[4], 11
+	srlw	@T[1], @C[5], 32-11
+	sllw	@T[2], @C[5], 11
+	srlw	@T[3], @C[4], 32-11
+	or	@C[4], @T[1], @T[0]
+	or	@C[5], @T[3], @T[2]	# C[2] = ROL64(A[2][2], 43)
+
+	sllw	@T[0], @C[7], 21
+	srlw	@T[1], @C[6], 32-21
+	sllw	@T[2], @C[6], 21
+	srlw	@T[3], @C[7], 32-21
+	or	@C[6], @T[1], @T[0]
+	or	@C[7], @T[3], @T[2]	# C[3] = ROL64(A[3][3], 21)
+
+	sllw	@T[0], @C[8], 14
+	srlw	@T[1], @C[9], 32-14
+	sllw	@T[2], @C[9], 14
+	srlw	@T[3], @C[8], 32-14
+	or	@C[8], @T[1], @T[0]
+	or	@C[9], @T[3], @T[2]	# C[4] = ROL64(A[4][4], 14)
+
+	 lw	@T[2], 0($t0)		# *iotas++
+	 lw	@T[3], 4($t0)
+	 add	$t0, $t0, 8
 #endif
 
 	or	@T[0], @C[2], @C[4]
@@ -1245,36 +1268,40 @@ __KeccakF1600:
 	rorw	@C[8], @C[8], 31-30
 	rorw	@C[9], @C[9], 32-30
 #else
-	srlw	@T[0], @C[0], 32-14
-	sllw	@C[0], @C[0], 14
-	srlw	@T[1], @C[1], 32-14
-	sllw	@C[1], @C[1], 14
-	or	@C[0], @C[0], @T[0]
-	or	@C[1], @C[1], @T[1]
-	srlw	@T[0], @C[2], 32-10
-	sllw	@C[2], @C[2], 10
-	srlw	@T[1], @C[3], 32-10
-	sllw	@C[3], @C[3], 10
-	or	@C[2], @C[2], @T[0]
-	or	@C[3], @C[3], @T[1]
-	srlw	@T[0], @C[4], 31-1
-	sllw	@C[4], @C[4], 2
-	srlw	@T[1], @C[5], 32-1
-	sllw	@C[5], @C[5], 1
-	or	@C[4], @C[4], @T[0]
-	or	@C[5], @C[5], @T[1]
-	srlw	@T[0], @C[6], 31-22
-	sllw	@C[6], @C[6], 23
-	srlw	@T[1], @C[7], 32-22
-	sllw	@C[7], @C[7], 22
-	or	@C[6], @C[6], @T[0]
-	or	@C[7], @C[7], @T[1]
-	srlw	@T[0], @C[8], 31-30
-	sllw	@C[8], @C[8], 31
-	srlw	@T[1], @C[9], 32-30
-	sllw	@C[9], @C[9], 30
-	or	@C[8], @C[8], @T[0]
-	or	@C[9], @C[9], @T[1]
+	sllw	@T[0], @C[0], 28
+	srlw	@T[1], @C[1], 32-28
+	sllw	@T[2], @C[1], 28
+	srlw	@T[3], @C[0], 32-28
+	or	@C[0], @T[1], @T[0]
+	or	@C[1], @T[3], @T[2]	# C[0] = ROL64(A[0][3], 28)
+
+	sllw	@T[0], @C[2], 20
+	srlw	@T[1], @C[3], 32-20
+	sllw	@T[2], @C[3], 20
+	srlw	@T[3], @C[2], 32-20
+	or	@C[2], @T[1], @T[0]
+	or	@C[3], @T[3], @T[2]	# C[1] = ROL64(A[1][4], 20)
+
+	sllw	@T[0], @C[5], 3
+	srlw	@T[1], @C[4], 32-3
+	sllw	@T[2], @C[4], 3
+	srlw	@T[3], @C[5], 32-3
+	or	@C[4], @T[1], @T[0]
+	or	@C[5], @T[3], @T[2]	# C[2] = ROL64(A[2][0], 3)
+
+	sllw	@T[0], @C[6], 13
+	srlw	@T[1], @C[7], 32-13
+	sllw	@T[2], @C[7], 13
+	srlw	@T[3], @C[6], 32-13
+	or	@C[6], @T[1], @T[0]
+	or	@C[7], @T[3], @T[2]	# C[3] = ROL64(A[3][1], 45)
+
+	sllw	@T[0], @C[8], 29
+	srlw	@T[1], @C[9], 32-29
+	sllw	@T[2], @C[9], 29
+	srlw	@T[3], @C[8], 32-29
+	or	@C[8], @T[1], @T[0]
+	or	@C[9], @T[3], @T[2]	# C[4] = ROL64(A[4][2], 61)
 #endif
 
 	or	@T[0], @C[2], @C[4]
@@ -1343,36 +1370,40 @@ __KeccakF1600:
 	rorw	@C[8], @C[8], 32-9
 	rorw	@C[9], @C[9], 32-9
 #else
-	srlw	@T[0], @C[0], 31-0
-	sllw	@C[0], @C[0], 1
-	#srlw	@T[1], @C[1], 32-0
-	#sllw	@C[1], @C[1], 0
-	or	@C[0], @C[0], @T[0]
-	#or	@C[1], @C[1], @T[1]
-	srlw	@T[0], @C[2], 32-3
-	sllw	@C[2], @C[2], 3
-	srlw	@T[1], @C[3], 32-3
-	sllw	@C[3], @C[3], 3
-	or	@C[2], @C[2], @T[0]
-	or	@C[3], @C[3], @T[1]
-	srlw	@T[0], @C[4], 31-12
-	sllw	@C[4], @C[4], 13
-	srlw	@T[1], @C[5], 32-12
-	sllw	@C[5], @C[5], 12
-	or	@C[4], @C[4], @T[0]
-	or	@C[5], @C[5], @T[1]
-	srlw	@T[0], @C[6], 32-4
-	sllw	@C[6], @C[6], 4
-	srlw	@T[1], @C[7], 32-4
-	sllw	@C[7], @C[7], 4
-	or	@C[6], @C[6], @T[0]
-	or	@C[7], @C[7], @T[1]
-	srlw	@T[0], @C[8], 32-9
-	sllw	@C[8], @C[8], 9
-	srlw	@T[1], @C[9], 32-9
-	sllw	@C[9], @C[9], 9
-	or	@C[8], @C[8], @T[0]
-	or	@C[9], @C[9], @T[1]
+	sllw	@T[0], @C[1], 1
+	srlw	@T[1], @C[0], 32-1
+	sllw	@T[2], @C[0], 1
+	srlw	@T[3], @C[1], 32-1
+	or	@C[0], @T[1], @T[0]
+	or	@C[1], @T[3], @T[2]	# C[0] = ROL64(A[0][1], 1)
+
+	sllw	@T[0], @C[2], 6
+	srlw	@T[1], @C[3], 32-6
+	sllw	@T[2], @C[3], 6
+	srlw	@T[3], @C[2], 32-6
+	or	@C[2], @T[1], @T[0]
+	or	@C[3], @T[3], @T[2]	# C[1] = ROL64(A[1][2], 6)
+
+	sllw	@T[0], @C[5], 25
+	srlw	@T[1], @C[4], 32-25
+	sllw	@T[2], @C[4], 25
+	srlw	@T[3], @C[5], 32-25
+	or	@C[4], @T[1], @T[0]
+	or	@C[5], @T[3], @T[2]	# C[2] = ROL64(A[2][3], 25)
+
+	sllw	@T[0], @C[6], 8
+	srlw	@T[1], @C[7], 32-8
+	sllw	@T[2], @C[7], 8
+	srlw	@T[3], @C[6], 32-8
+	or	@C[6], @T[1], @T[0]
+	or	@C[7], @T[3], @T[2]	# C[3] = ROL64(A[3][4], 8)
+
+	sllw	@T[0], @C[8], 18
+	srlw	@T[1], @C[9], 32-18
+	sllw	@T[2], @C[9], 18
+	srlw	@T[3], @C[8], 32-18
+	or	@C[8], @T[1], @T[0]
+	or	@C[9], @T[3], @T[2]	# C[4] = ROL64(A[4][0], 18)
 #endif
 
 	or	@T[0], @C[2], @C[4]
@@ -1441,36 +1472,40 @@ __KeccakF1600:
 	rorw	@C[8], @C[8], 32-28
 	rorw	@C[9], @C[9], 32-28
 #else
-	srlw	@T[0], @C[0], 31-13
-	sllw	@C[0], @C[0], 14
-	srlw	@T[1], @C[1], 32-13
-	sllw	@C[1], @C[1], 13
-	or	@C[0], @C[0], @T[0]
-	or	@C[1], @C[1], @T[1]
-	srlw	@T[0], @C[2], 32-18
-	sllw	@C[2], @C[2], 18
-	srlw	@T[1], @C[3], 32-18
-	sllw	@C[3], @C[3], 18
-	or	@C[2], @C[2], @T[0]
-	or	@C[3], @C[3], @T[1]
-	srlw	@T[0], @C[4], 32-5
-	sllw	@C[4], @C[4], 5
-	srlw	@T[1], @C[5], 32-5
-	sllw	@C[5], @C[5], 5
-	or	@C[4], @C[4], @T[0]
-	or	@C[5], @C[5], @T[1]
-	srlw	@T[0], @C[6], 31-7
-	sllw	@C[6], @C[6], 8
-	srlw	@T[1], @C[7], 32-7
-	sllw	@C[7], @C[7], 7
-	or	@C[6], @C[6], @T[0]
-	or	@C[7], @C[7], @T[1]
-	srlw	@T[0], @C[8], 32-28
-	sllw	@C[8], @C[8], 28
-	srlw	@T[1], @C[9], 32-28
-	sllw	@C[9], @C[9], 28
-	or	@C[8], @C[8], @T[0]
-	or	@C[9], @C[9], @T[1]
+	sllw	@T[0], @C[1], 27
+	srlw	@T[1], @C[0], 32-27
+	sllw	@T[2], @C[0], 27
+	srlw	@T[3], @C[1], 32-27
+	or	@C[0], @T[1], @T[0]
+	or	@C[1], @T[3], @T[2]	# C[0] = ROL64(A[0][4], 27)
+
+	sllw	@T[0], @C[3], 4
+	srlw	@T[1], @C[2], 32-4
+	sllw	@T[2], @C[2], 4
+	srlw	@T[3], @C[3], 32-4
+	or	@C[2], @T[1], @T[0]
+	or	@C[3], @T[3], @T[2]	# C[1] = ROL64(A[1][0], 36)
+
+	sllw	@T[0], @C[4], 10
+	srlw	@T[1], @C[5], 32-10
+	sllw	@T[2], @C[5], 10
+	srlw	@T[3], @C[4], 32-10
+	or	@C[4], @T[1], @T[0]
+	or	@C[5], @T[3], @T[2]	# C[2] = ROL64(A[2][1], 10)
+
+	sllw	@T[0], @C[7], 15
+	srlw	@T[1], @C[6], 32-15
+	sllw	@T[2], @C[6], 15
+	srlw	@T[3], @C[7], 32-15
+	or	@C[6], @T[1], @T[0]
+	or	@C[7], @T[3], @T[2]	# C[3] = ROL64(A[3][2], 15)
+
+	sllw	@T[0], @C[9], 24
+	srlw	@T[1], @C[8], 32-24
+	sllw	@T[2], @C[8], 24
+	srlw	@T[3], @C[9], 32-24
+	or	@C[8], @T[1], @T[0]
+	or	@C[9], @T[3], @T[2]	# C[4] = ROL64(A[4][3], 56)
 #endif
 
 	and	@T[0], @C[2], @C[4]
@@ -1542,36 +1577,40 @@ __KeccakF1600:
 	rorw	@C[8], @C[8], 32-1
 	rorw	@C[9], @C[9], 32-1
 #else
-	srlw	@T[0], @C[0], 32-31
-	sllw	@C[0], @C[0], 31
-	srlw	@T[1], @C[1], 32-31
-	sllw	@C[1], @C[1], 31
-	or	@C[0], @C[0], @T[0]
-	or	@C[1], @C[1], @T[1]
-	srlw	@T[0], @C[2], 31-27
-	sllw	@C[2], @C[2], 28
-	srlw	@T[1], @C[3], 32-27
-	sllw	@C[3], @C[3], 27
-	or	@C[2], @C[2], @T[0]
-	or	@C[3], @C[3], @T[1]
-	srlw	@T[0], @C[4], 31-19
-	sllw	@C[4], @C[4], 20
-	srlw	@T[1], @C[5], 32-19
-	sllw	@C[5], @C[5], 19
-	or	@C[4], @C[4], @T[0]
-	or	@C[5], @C[5], @T[1]
-	srlw	@T[0], @C[6], 31-20
-	sllw	@C[6], @C[6], 21
-	srlw	@T[1], @C[7], 32-20
-	sllw	@C[7], @C[7], 20
-	or	@C[6], @C[6], @T[0]
-	or	@C[7], @C[7], @T[1]
-	srlw	@T[0], @C[8], 32-1
-	sllw	@C[8], @C[8], 1
-	srlw	@T[1], @C[9], 32-1
-	sllw	@C[9], @C[9], 1
-	or	@C[8], @C[8], @T[0]
-	or	@C[9], @C[9], @T[1]
+	sllw	@T[0], @C[1], 30
+	srlw	@T[1], @C[0], 32-30
+	sllw	@T[2], @C[0], 30
+	srlw	@T[3], @C[1], 32-30
+	or	@C[0], @T[1], @T[0]
+	or	@C[1], @T[3], @T[2]	# C[0] = ROL64(A[0][2], 62)
+
+	sllw	@T[0], @C[2], 23
+	srlw	@T[1], @C[3], 32-23
+	sllw	@T[2], @C[3], 23
+	srlw	@T[3], @C[2], 32-23
+	or	@C[2], @T[1], @T[0]
+	or	@C[3], @T[3], @T[2]	# C[1] = ROL64(A[1][3], 55)
+
+	sllw	@T[0], @C[4], 7
+	srlw	@T[1], @C[5], 32-7
+	sllw	@T[2], @C[5], 7
+	srlw	@T[3], @C[4], 32-7
+	or	@C[4], @T[1], @T[0]
+	or	@C[5], @T[3], @T[2]	# C[2] = ROL64(A[2][4], 39)
+
+	sllw	@T[0], @C[6], 9
+	srlw	@T[1], @C[7], 32-9
+	sllw	@T[2], @C[7], 9
+	srlw	@T[3], @C[6], 32-9
+	or	@C[6], @T[1], @T[0]
+	or	@C[7], @T[3], @T[2]	# C[3] = ROL64(A[3][0], 41)
+
+	sllw	@T[0], @C[8], 2
+	srlw	@T[1], @C[9], 32-2
+	sllw	@T[2], @C[9], 2
+	srlw	@T[3], @C[8], 32-2
+	or	@C[8], @T[1], @T[0]
+	or	@C[9], @T[3], @T[2]	# C[4] = ROL64(A[4][1], 2)
 #endif
 
 	not	@T[2], @C[2]
@@ -1605,11 +1644,10 @@ __KeccakF1600:
 	sw	@D[7], $A[4][3]+4($a0)
 	xor	@D[9], @C[9], @C[1]
 	sw	@D[8], $A[4][4]+0($a0)	# R[4][4] =  C[4] ^ ( C[0] & C[1]);
-	andi	@T[0], $ra, 0xff
+	andi	@T[0], $t0, 0xff
 	sw	@D[9], $A[4][4]+4($a0)
 	bnez	@T[0], .Loop
 
-	POP	$ra, 224-__SIZEOF_REG_T__*1($sp)
 	addi	$sp, $sp, 224
 	ret
 .size	__KeccakF1600, .-__KeccakF1600
@@ -1791,6 +1829,7 @@ SHA3_absorb:
 	PUSH	$t1, __SIZEOF_REG_T__*1($sp)
 	PUSH	$t2, __SIZEOF_REG_T__*0($sp)
 	mv	$A_flat, $a0
+#ifdef	__riscv_zbb
 	lui	$s0, 0x55555
 	lui	$s1, 0x33333
 	lui	$s2, 0x0f0f1
@@ -1805,6 +1844,7 @@ SHA3_absorb:
 	sllw	$s7, $s3, 8		# 0xff00ff00
 	lui	$s8, 0xffff0		# 0xffff0000
 	srlw	$s9, $s8, 16		# 0x0000ffff
+#endif
 
 .Loop_block:
 	lbu	$a4, 0($inp)
@@ -1832,6 +1872,7 @@ SHA3_absorb:
 	lw	$s10, 0($A_flat)
 	lw	$s11, 4($A_flat)
 
+#ifdef	__riscv_zbb
 	and	$t0, $a4, $s0		# t0 = lo & 0x55555555;
 	 and	$t1, $a5, $s0		# t1 = hi & 0x55555555;
 	srlw	$ra, $t0, 1
@@ -1890,6 +1931,10 @@ SHA3_absorb:
 	xor	$s11, $s11, $a4
 	xor	$s10, $s10, $t1
 	xor	$s11, $s11, $a5
+#else
+	xor	$s10, $s10, $a4
+	xor	$s11, $s11, $a5
+#endif
 
 	sw	$s10, 0($A_flat)
 	addi	$bsz, $bsz, -8
@@ -1987,6 +2032,7 @@ SHA3_squeeze:
 	PUSH	$bsz, __SIZEOF_REG_T__*2($sp)
 	mv	$A_flat, $a0
 
+#ifdef	__riscv_zbb
 	lui	$s4, 0x55555
 	lui	$s5, 0x33333
 	lui	$s6, 0x0f0f1
@@ -2001,12 +2047,14 @@ SHA3_squeeze:
 	sllw	$s10, $s6, 4		# 0xf0f0f0f0
 	sllw	$s11, $s7, 8		# 0xff00ff00
 	srlw	$s3, $s2, 16		# 0x0000ffff
+#endif
 
 .Loop_squeeze:
 	lw	$a4, 0($A_flat)
 	lw	$a5, 4($A_flat)
 	addi	$A_flat, $A_flat, 8
 
+#ifdef	__riscv_zbb
 	and	$t0, $a4, $s3		# t0 = lo & 0x0000ffff;
 	 sllw	$t1, $a5, 16		# t1 = hi << 16;
 	sllw	$ra, $t0, 8
@@ -2061,9 +2109,10 @@ SHA3_squeeze:
 	and	$a4, $a4, $s4		# lo &= 0x55555555;
 	 and	$a5, $a5, $s8		# hi &= 0xaaaaaaaa;
 
-	sltiu	$ra, $len, 4
 	or	$a5, $a5, $a4
 	or	$a4, $t0, $t1
+#endif
+	sltiu	$ra, $len, 4
 	bnez	$ra, .Lsqueeze_tail
 
 	srlw	$a6, $a4, 8
@@ -2137,6 +2186,7 @@ $code.=<<___;
 		# address value as loop termination condition...
 	.word	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 iotas:
+#ifdef	__riscv_zbb
 	.word	0x00000001, 0x00000000
 	.word	0x00000000, 0x00000089
 	.word	0x00000000, 0x8000008b
@@ -2161,6 +2211,32 @@ iotas:
 	.word	0x00000000, 0x80000088
 	.word	0x00000001, 0x00008000
 	.word	0x00000000, 0x80008082
+#else
+	.word	0x00000001, 0x00000000
+	.word	0x00008082, 0x00000000
+	.word	0x0000808a, 0x80000000
+	.word	0x80008000, 0x80000000
+	.word	0x0000808b, 0x00000000
+	.word	0x80000001, 0x00000000
+	.word	0x80008081, 0x80000000
+	.word	0x00008009, 0x80000000
+	.word	0x0000008a, 0x00000000
+	.word	0x00000088, 0x00000000
+	.word	0x80008009, 0x00000000
+	.word	0x8000000a, 0x00000000
+	.word	0x8000808b, 0x00000000
+	.word	0x0000008b, 0x80000000
+	.word	0x00008089, 0x80000000
+	.word	0x00008003, 0x80000000
+	.word	0x00008002, 0x80000000
+	.word	0x00000080, 0x80000000
+	.word	0x0000800a, 0x00000000
+	.word	0x8000000a, 0x80000000
+	.word	0x80008081, 0x80000000
+	.word	0x00008080, 0x80000000
+	.word	0x80000001, 0x00000000
+	.word	0x80008008, 0x80000000
+#endif
 .string	"Keccak-1600 absorb and squeeze for RISC-V, CRYPTOGAMS by \@dot-asm"
 ___
 }}}
