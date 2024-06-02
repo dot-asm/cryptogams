@@ -21,6 +21,10 @@
 # invest time prior vector-capable hardware appears, so that one can
 # make suitable choices. For now it's just a qemu exercise...
 #
+# June 2024.
+#
+# Add CHERI support.
+#
 ######################################################################
 #
 ($zero,$ra,$sp,$gp,$tp) = map("x$_",(0..4));
@@ -29,6 +33,8 @@
 ($t0,$t1,$t2,$t3,$t4,$t5,$t6)=map("x$_",(5..7, 28..31));
 #
 ######################################################################
+
+$flavour = shift;	# "cheri" is the only meaningful option
 
 my @x = map("x$_",(16..31));
 my @y = map("x$_",(5..9,13,14));
@@ -158,16 +164,27 @@ ___
 
 $code.=<<___;
 #if __riscv_xlen == 32
-# define PUSH	sw
-# define POP	lw
+# if __SIZEOF_POINTER__ == 8
+#  define PUSH	csc
+#  define POP	clc
+# else
+#  define PUSH	sw
+#  define POP	lw
+# endif
 # define srlw	srl
 # define rorw	ror
+#elif __riscv_xlen == 64
+# if __SIZEOF_POINTER__ == 16
+#  define PUSH	csc
+#  define POP	clc
+# else
+#  define PUSH	sd
+#  define POP	ld
+# endif
 #else
-# define PUSH	sd
-# define POP	ld
+# error "unsupported __riscv_xlen"
 #endif
-#define __SIZEOF_REG_T__	(__riscv_xlen/8)
-#define FRAMESIZE		(64+16*__SIZEOF_REG_T__)
+#define FRAMESIZE		(64+16*__SIZEOF_POINTER__)
 
 .text
 .option	pic
@@ -230,26 +247,26 @@ $code.=<<___;
 	add		@x[13],@x[13],@y[1]
 	add		@x[14],@x[14],@y[2]
 	add		@x[15],@x[15],@y[3]
-	jr		$ra
+	ret
 .size	__ChaCha,.-__ChaCha
 
 .globl	ChaCha20_ctr32
 .type	ChaCha20_ctr32,\@function
 ChaCha20_ctr32:
-	addi		$sp,$sp,-FRAMESIZE
-	PUSH		$ra, (FRAMESIZE-1*__SIZEOF_REG_T__)($sp)
-	PUSH		$s0, (FRAMESIZE-2*__SIZEOF_REG_T__)($sp)
-	PUSH		$s1, (FRAMESIZE-3*__SIZEOF_REG_T__)($sp)
-	PUSH		$s2, (FRAMESIZE-4*__SIZEOF_REG_T__)($sp)
-	PUSH		$s3, (FRAMESIZE-5*__SIZEOF_REG_T__)($sp)
-	PUSH		$s4, (FRAMESIZE-6*__SIZEOF_REG_T__)($sp)
-	PUSH		$s5, (FRAMESIZE-7*__SIZEOF_REG_T__)($sp)
-	PUSH		$s6, (FRAMESIZE-8*__SIZEOF_REG_T__)($sp)
-	PUSH		$s7, (FRAMESIZE-9*__SIZEOF_REG_T__)($sp)
-	PUSH		$s8, (FRAMESIZE-10*__SIZEOF_REG_T__)($sp)
-	PUSH		$s9, (FRAMESIZE-11*__SIZEOF_REG_T__)($sp)
-	PUSH		$s10,(FRAMESIZE-12*__SIZEOF_REG_T__)($sp)
-	PUSH		$s11,(FRAMESIZE-13*__SIZEOF_REG_T__)($sp)
+	caddi		$sp,$sp,-FRAMESIZE
+	PUSH		$ra, (FRAMESIZE-1*__SIZEOF_POINTER__)($sp)
+	PUSH		$s0, (FRAMESIZE-2*__SIZEOF_POINTER__)($sp)
+	PUSH		$s1, (FRAMESIZE-3*__SIZEOF_POINTER__)($sp)
+	PUSH		$s2, (FRAMESIZE-4*__SIZEOF_POINTER__)($sp)
+	PUSH		$s3, (FRAMESIZE-5*__SIZEOF_POINTER__)($sp)
+	PUSH		$s4, (FRAMESIZE-6*__SIZEOF_POINTER__)($sp)
+	PUSH		$s5, (FRAMESIZE-7*__SIZEOF_POINTER__)($sp)
+	PUSH		$s6, (FRAMESIZE-8*__SIZEOF_POINTER__)($sp)
+	PUSH		$s7, (FRAMESIZE-9*__SIZEOF_POINTER__)($sp)
+	PUSH		$s8, (FRAMESIZE-10*__SIZEOF_POINTER__)($sp)
+	PUSH		$s9, (FRAMESIZE-11*__SIZEOF_POINTER__)($sp)
+	PUSH		$s10,(FRAMESIZE-12*__SIZEOF_POINTER__)($sp)
+	PUSH		$s11,(FRAMESIZE-13*__SIZEOF_POINTER__)($sp)
 
 	lui		@x[0],0x61707+1		# compose sigma
 	lui		@x[1],0x33206
@@ -341,9 +358,9 @@ $code.=<<___;
 	sb		@y[4],61($out)
 	addi		$len,$len,-64
 	sb		@y[5],62($out)
-	addi		$inp,$inp,64
+	caddi		$inp,$inp,64
 	sb		@y[6],63($out)
-	addi		$out,$out,64
+	caddi		$out,$out,64
 	beqz		$len,.Ldone
 
 	sltiu		@y[4],$len,64
@@ -388,9 +405,9 @@ $code.=<<___;
 	sw		@x[13],52($out)
 	addi		$len,$len,-64
 	sw		@x[14],56($out)
-	addi		$inp,$inp,64
+	caddi		$inp,$inp,64
 	sw		@x[15],60($out)
-	addi		$out,$out,64
+	caddi		$out,$out,64
 	sltiu		@y[4],$len,64
 	beqz		$len,.Ldone
 
@@ -400,7 +417,7 @@ $code.=<<___;
 	beqz		@y[4],.Loop_aligned
 
 .Ltail:
-	mv		$ra,$sp
+	cmove		$ra,$sp
 	sw		@x[1], 4*1($sp)
 	sw		@x[2], 4*2($sp)
 	sw		@x[3], 4*3($sp)
@@ -421,13 +438,13 @@ $code.=<<___;
 	sltiu		$at,$len,4
 	bnez		$at,.Last_word
 
-	addi		$ra,$ra,4
+	caddi		$ra,$ra,4
 	lb		@y[0],0($inp)
 	lb		@y[1],1($inp)
 	lb		@y[2],2($inp)
 	addi		$len,$len,-4
 	lb		@y[3],3($inp)
-	addi		$inp,$inp,4
+	caddi		$inp,$inp,4
 	xor		@y[0],@y[0],@x[0]
 	srl		@x[0],@x[0],8
 	xor		@y[1],@y[1],@x[0]
@@ -440,35 +457,35 @@ $code.=<<___;
 	sb		@y[1],1($out)
 	sb		@y[2],2($out)
 	sb		@y[3],3($out)
-	addi		$out,$out,4
+	caddi		$out,$out,4
 	j		.Loop_tail
 
 .Last_word:
 	beqz		$len,.Ldone
 	addi		$len,$len,-1
 	lb		@y[0],0($inp)
-	addi		$inp,$inp,1
+	caddi		$inp,$inp,1
 	xor		@y[0],@y[0],@x[0]
 	srl		@x[0],@x[0],8
 	sb		@y[0],0($out)
-	addi		$out,$out,1
+	caddi		$out,$out,1
 	j		.Last_word
 
 .Ldone:
-	POP		$ra, (FRAMESIZE-1*__SIZEOF_REG_T__)($sp)
-	POP		$s0, (FRAMESIZE-2*__SIZEOF_REG_T__)($sp)
-	POP		$s1, (FRAMESIZE-3*__SIZEOF_REG_T__)($sp)
-	POP		$s2, (FRAMESIZE-4*__SIZEOF_REG_T__)($sp)
-	POP		$s3, (FRAMESIZE-5*__SIZEOF_REG_T__)($sp)
-	POP		$s4, (FRAMESIZE-6*__SIZEOF_REG_T__)($sp)
-	POP		$s5, (FRAMESIZE-7*__SIZEOF_REG_T__)($sp)
-	POP		$s6, (FRAMESIZE-8*__SIZEOF_REG_T__)($sp)
-	POP		$s7, (FRAMESIZE-9*__SIZEOF_REG_T__)($sp)
-	POP		$s8, (FRAMESIZE-10*__SIZEOF_REG_T__)($sp)
-	POP		$s9, (FRAMESIZE-11*__SIZEOF_REG_T__)($sp)
-	POP		$s10,(FRAMESIZE-12*__SIZEOF_REG_T__)($sp)
-	POP		$s11,(FRAMESIZE-13*__SIZEOF_REG_T__)($sp)
-	addi		$sp,$sp,FRAMESIZE
+	POP		$ra, (FRAMESIZE-1*__SIZEOF_POINTER__)($sp)
+	POP		$s0, (FRAMESIZE-2*__SIZEOF_POINTER__)($sp)
+	POP		$s1, (FRAMESIZE-3*__SIZEOF_POINTER__)($sp)
+	POP		$s2, (FRAMESIZE-4*__SIZEOF_POINTER__)($sp)
+	POP		$s3, (FRAMESIZE-5*__SIZEOF_POINTER__)($sp)
+	POP		$s4, (FRAMESIZE-6*__SIZEOF_POINTER__)($sp)
+	POP		$s5, (FRAMESIZE-7*__SIZEOF_POINTER__)($sp)
+	POP		$s6, (FRAMESIZE-8*__SIZEOF_POINTER__)($sp)
+	POP		$s7, (FRAMESIZE-9*__SIZEOF_POINTER__)($sp)
+	POP		$s8, (FRAMESIZE-10*__SIZEOF_POINTER__)($sp)
+	POP		$s9, (FRAMESIZE-11*__SIZEOF_POINTER__)($sp)
+	POP		$s10,(FRAMESIZE-12*__SIZEOF_POINTER__)($sp)
+	POP		$s11,(FRAMESIZE-13*__SIZEOF_POINTER__)($sp)
+	caddi		$sp,$sp,FRAMESIZE
 	ret
 .size	ChaCha20_ctr32,.-ChaCha20_ctr32
 ___
@@ -562,24 +579,24 @@ $code.=<<___;
 	vsetivli	zero, 16, e8
 	bltu		$len, $t0, .Ltail_v
 
-	addi		$t1, $inp, 16
-	addi		$t2, $inp, 32
-	addi		$t3, $inp, 48
+	caddi		$t1, $inp, 16
+	caddi		$t2, $inp, 32
+	caddi		$t3, $inp, 48
 	vle8.v		v4, ($inp)
-	addi		$inp, $inp, 64
+	caddi		$inp, $inp, 64
 	addi		$len, $len, -64
 	vle8.v		v5, ($t1)
-	addi		$t1, $out, 16
+	caddi		$t1, $out, 16
 	vle8.v		v6, ($t2)
-	addi		$t2, $out, 32
+	caddi		$t2, $out, 32
 	vle8.v		v7, ($t3)
-	addi		$t3, $out, 48
+	caddi		$t3, $out, 48
 	vxor.vv		v4, v4, v0
 	vxor.vv		v5, v5, v1
 	vxor.vv		v6, v6, v2
 	vxor.vv		v7, v7, v3
 	vse8.v		v4, ($out)
-	addi		$out, $out, 64
+	caddi		$out, $out, 64
 	vse8.v		v5, ($t1)
 	vse8.v		v6, ($t2)
 	vse8.v		v7, ($t3)
@@ -592,30 +609,30 @@ $code.=<<___;
 	bleu		$len, $t0, .Last_v
 
 	vle8.v		v4, ($inp)
-	addi		$inp, $inp, 16
+	caddi		$inp, $inp, 16
 	addi		$len, $len, -16
 	vxor.vv		v4, v4, v0
 	vmv.v.v		v0, v1
 	vse8.v		v4, ($out)
-	addi		$out, $out, 16
+	caddi		$out, $out, 16
 	bleu		$len, $t0, .Last_v
 
 	vle8.v		v5, ($inp)
-	addi		$inp, $inp, 16
+	caddi		$inp, $inp, 16
 	addi		$len, $len, -16
 	vxor.vv		v5, v5, v1
 	vmv.v.v		v0, v2
 	vse8.v		v5, ($out)
-	addi		$out, $out, 16
+	caddi		$out, $out, 16
 	bleu		$len, $t0, .Last_v
 
 	vle8.v		v6, ($inp)
-	addi		$inp, $inp, 16
+	caddi		$inp, $inp, 16
 	addi		$len, $len, -16
 	vxor.vv		v6, v6, v2
 	vmv.v.v		v0, v3
 	vse8.v		v6, ($out)
-	addi		$out, $out, 16
+	caddi	$out, $out, 16
 
 .Last_v:
 	vsetvli		zero, $len, e8
@@ -635,5 +652,18 @@ sigma:
 .string	"ChaCha20 for RISC-V, CRYPTOGAMS by \@dot-asm"
 ___
 
-print $code;
+foreach (split("\n", $code)) {
+    if ($flavour =~ "cheri") {
+	s/\(x([0-9]+)\)/(c$1)/ and s/\b([ls][bhwd]u?)\b/c$1/;
+	s/\b(PUSH|POP)(\s+)x([0-9]+)/$1$2c$3/ or
+	s/\b(ret|jal)\b/c$1/;
+	s/\bcaddi?\b/cincoffset/ and s/\bx([0-9]+,)/c$1/g or
+	m/\bcmove\b/ and s/\bx([0-9]+)/c$1/g;
+    } else {
+	s/\bcaddi?\b/add/ or
+	s/\bcmove\b/mv/;
+    }
+    print $_, "\n";
+}
+
 close STDOUT;
