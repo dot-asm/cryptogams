@@ -15,6 +15,10 @@
 # compiler-generated code, extra 33%, 18 cbp on JH7110, U74 with zbb.
 # 19.4 cpb on C910.
 #
+# June 2024.
+#
+# Add CHERI support.
+#
 ######################################################################
 ($zero,$ra,$sp,$gp,$tp) = map("x$_",(0..4));
 ($a0,$a1,$a2,$a3,$a4,$a5,$a6,$a7)=map("x$_",(10..17));
@@ -22,7 +26,7 @@
 ($t0,$t1,$t2,$t3,$t4,$t5,$t6)=map("x$_",(5..7, 28..31));
 ######################################################################
 
-$flavour = shift || "64";
+$flavour = shift || "64";	# cheri64 or cheri are acceptable too
 
 for (@ARGV) {   $output=$_ if (/\w[\w\-]*\.\w+$/);   }
 open STDOUT,">$output";
@@ -47,20 +51,32 @@ my @D = ($A[0][4],$A[0][0],$A[0][1],$A[0][2],$A[0][3]);
 # offsets into stack frame
 my @E = map(8*$_, (0..4));
 my @F = map(8*$_, (5..9));
-my ($iotas,$_ra) = map(8*$_,(10..11));
+my $_ra = 8*10;
 
 $code.=<<___;
+#if __riscv_xlen == 64
+# if __SIZEOF_POINTER__ == 16
+#  define PUSH	csc
+#  define POP	clc
+# else
+#  define PUSH	sd
+#  define POP	ld
+# endif
+#else
+# error "unsupported __riscv_xlen"
+#endif
+
 .text
 .option	pic
 
 .type	__KeccakF1600, \@function
 __KeccakF1600:
-	addi	$sp, $sp, -8*12
-	sd	$ra, $_ra($sp)
+	caddi	$sp, $sp, -8*12
+	PUSH	$ra, $_ra($sp)
 
 	sd	$A[4][0], $F[0]($sp)
 	sd	$A[4][1], $F[1]($sp)
-	lla	$ra, iotas			# iotas
+	cllc	$ra, iotas			# iotas
 
 .Loop:
 	 sd	$A[0][2], $E[2]($sp)		# offload A[0][*]
@@ -232,7 +248,7 @@ __KeccakF1600:
 	andn	$T[2], $A[0][1], $A[0][0]
 	xor	$A[0][3], $A[0][3], $T[3]
 	 ld	$T[3], 0($ra)			# *iotas++
-	 add	$ra, $ra, 8
+	 caddi	$ra, $ra, 8
 	xor	$A[0][1], $A[0][1], $T[0]
 	xor	$A[0][0], $A[0][0], $T[1]
 	xor	$A[0][4], $A[0][4], $T[2]
@@ -448,7 +464,7 @@ __KeccakF1600:
 	and	$T[2], $A[0][0], $A[0][1]
 	xor	$A[0][3], $A[0][3], $T[3]
 	 ld	$T[3], 0($ra)			# *iotas++
-	 add	$ra, $ra, 8
+	 caddi	$ra, $ra, 8
 	xor	$A[0][4], $A[0][4], $T[2]
 	xor	$A[0][0], $A[0][0], $T[0]
 	xor	$A[0][1], $A[0][1], $T[1]
@@ -458,35 +474,35 @@ __KeccakF1600:
 	andi	$T[0], $ra, 0xff
 	bnez	$T[0], .Loop
 
-	ld	$ra, $_ra($sp)
+	POP	$ra, $_ra($sp)
 
 	ld	$A[4][0], $F[0]($sp)
 	ld	$A[4][1], $F[1]($sp)
 
-	addi	$sp, $sp, 8*12
+	caddi	$sp, $sp, 8*12
 	ret
 .size	__KeccakF1600, .-__KeccakF1600
 
 .type	KeccakF1600, \@function
 KeccakF1600:
-	addi	$sp, $sp, -8*16
+	caddi	$sp, $sp, -__SIZEOF_POINTER__*16
 
-	sd	$ra,  8*15($sp)
-	sd	$s0,  8*14($sp)
-	sd	$s1,  8*13($sp)
-	sd	$s2,  8*12($sp)
-	sd	$s3,  8*11($sp)
-	sd	$s4,  8*10($sp)
-	sd	$s5,  8*9($sp)
-	sd	$s6,  8*8($sp)
-	sd	$s7,  8*7($sp)
-	sd	$s8,  8*6($sp)
-	sd	$s9,  8*5($sp)
-	sd	$s10, 8*4($sp)
-	sd	$s11, 8*3($sp)
+	PUSH	$ra,  __SIZEOF_POINTER__*15($sp)
+	PUSH	$s0,  __SIZEOF_POINTER__*14($sp)
+	PUSH	$s1,  __SIZEOF_POINTER__*13($sp)
+	PUSH	$s2,  __SIZEOF_POINTER__*12($sp)
+	PUSH	$s3,  __SIZEOF_POINTER__*11($sp)
+	PUSH	$s4,  __SIZEOF_POINTER__*10($sp)
+	PUSH	$s5,  __SIZEOF_POINTER__*9($sp)
+	PUSH	$s6,  __SIZEOF_POINTER__*8($sp)
+	PUSH	$s7,  __SIZEOF_POINTER__*7($sp)
+	PUSH	$s8,  __SIZEOF_POINTER__*6($sp)
+	PUSH	$s9,  __SIZEOF_POINTER__*5($sp)
+	PUSH	$s10, __SIZEOF_POINTER__*4($sp)
+	PUSH	$s11, __SIZEOF_POINTER__*3($sp)
 
-	sd	$a0, 0($sp)
-	mv	$ra, $a0
+	PUSH	$a0, 0($sp)
+	cmove	$ra, $a0
 
 	ld	$A[0][0], 0x00($a0)
 	ld	$A[0][1], 0x08($a0)
@@ -525,7 +541,7 @@ KeccakF1600:
 
 	jal	__KeccakF1600
 
-	ld	$t1, 0($sp)
+	POP	$t1, 0($sp)
 
 #ifndef	__riscv_zbb
 	not	$A[0][1], $A[0][1]
@@ -562,20 +578,20 @@ KeccakF1600:
 	sd	$A[4][3], 0xb8($t1)
 	sd	$A[4][4], 0xc0($t1)
 
-	ld	$ra,  8*15($sp)
-	ld	$s0,  8*14($sp)
-	ld	$s1,  8*13($sp)
-	ld	$s2,  8*12($sp)
-	ld	$s3,  8*11($sp)
-	ld	$s4,  8*10($sp)
-	ld	$s5,  8*9($sp)
-	ld	$s6,  8*8($sp)
-	ld	$s7,  8*7($sp)
-	ld	$s8,  8*6($sp)
-	ld	$s9,  8*5($sp)
-	ld	$s10, 8*4($sp)
-	ld	$s11, 8*3($sp)
-	addi	$sp, $sp, 8*16
+	POP	$ra,  __SIZEOF_POINTER__*15($sp)
+	POP	$s0,  __SIZEOF_POINTER__*14($sp)
+	POP	$s1,  __SIZEOF_POINTER__*13($sp)
+	POP	$s2,  __SIZEOF_POINTER__*12($sp)
+	POP	$s3,  __SIZEOF_POINTER__*11($sp)
+	POP	$s4,  __SIZEOF_POINTER__*10($sp)
+	POP	$s5,  __SIZEOF_POINTER__*9($sp)
+	POP	$s6,  __SIZEOF_POINTER__*8($sp)
+	POP	$s7,  __SIZEOF_POINTER__*7($sp)
+	POP	$s8,  __SIZEOF_POINTER__*6($sp)
+	POP	$s9,  __SIZEOF_POINTER__*5($sp)
+	POP	$s10, __SIZEOF_POINTER__*4($sp)
+	POP	$s11, __SIZEOF_POINTER__*3($sp)
+	caddi	$sp, $sp, __SIZEOF_POINTER__*16
 	ret
 .size	KeccakF1600, .-KeccakF1600
 ___
@@ -610,7 +626,7 @@ __load_n_xor:
 	xor	$A[4][0], $A[4][0], $T[0]
 	sll	$T[1], $T[1], 56
 	xor	$A[4][0], $A[4][0], $T[1]
-	addi	$inp, $inp, 8
+	caddi	$inp, $inp, 8
 	ret
 .size	__load_n_xor, .-__load_n_xor
 
@@ -619,27 +635,27 @@ __load_n_xor:
 SHA3_absorb:
 	bltu	$a2, $a3, .Labsorb_abort
 
-	addi	$sp, $sp, -8*20
+	caddi	$sp, $sp, -__SIZEOF_POINTER__*20
 
-	sd	$ra,  8*19($sp)
-	sd	$s0,  8*18($sp)
-	sd	$s1,  8*17($sp)
-	sd	$s2,  8*16($sp)
-	sd	$s3,  8*15($sp)
-	sd	$s4,  8*14($sp)
-	sd	$s5,  8*13($sp)
-	sd	$s6,  8*12($sp)
-	sd	$s7,  8*11($sp)
-	sd	$s8,  8*10($sp)
-	sd	$s9,  8*9($sp)
-	sd	$s10, 8*8($sp)
-	sd	$s11, 8*7($sp)
+	PUSH	$ra,  __SIZEOF_POINTER__*19($sp)
+	PUSH	$s0,  __SIZEOF_POINTER__*18($sp)
+	PUSH	$s1,  __SIZEOF_POINTER__*17($sp)
+	PUSH	$s2,  __SIZEOF_POINTER__*16($sp)
+	PUSH	$s3,  __SIZEOF_POINTER__*15($sp)
+	PUSH	$s4,  __SIZEOF_POINTER__*14($sp)
+	PUSH	$s5,  __SIZEOF_POINTER__*13($sp)
+	PUSH	$s6,  __SIZEOF_POINTER__*12($sp)
+	PUSH	$s7,  __SIZEOF_POINTER__*11($sp)
+	PUSH	$s8,  __SIZEOF_POINTER__*10($sp)
+	PUSH	$s9,  __SIZEOF_POINTER__*9($sp)
+	PUSH	$s10, __SIZEOF_POINTER__*8($sp)
+	PUSH	$s11, __SIZEOF_POINTER__*7($sp)
 
-	mv	$t1,  $a0
-	mv	$inp, $a1
-	sd	$a0,  8*0($sp)			# put aside A[][]
+	cmove	$t1,  $a0
+	cmove	$inp, $a1
+	PUSH	$a0,  __SIZEOF_POINTER__*0($sp)	# put aside A[][]
 	mv	$len, $a2
-	sd	$a3,  8*3($sp)			# put aside bsz
+	sd	$a3,  __SIZEOF_POINTER__*3($sp)	# put aside bsz
 	mv	$bsz, $a3
 
 	ld	$A[0][0], 0x00($a0)
@@ -675,9 +691,9 @@ SHA3_absorb:
 
 .Loop_absorb:
 	sub	$len, $len, $bsz
-	add	$ra,  $inp, $bsz		# pointer to next block
-	sd	$len, 8*2($sp)
-	sd	$ra,  8*1($sp)
+	cadd	$ra,  $inp, $bsz		# pointer to next block
+	sd	$len, __SIZEOF_POINTER__*2($sp)
+	PUSH	$ra,  __SIZEOF_POINTER__*1($sp)
 
 	sd	$A[4][0], 0xa0($t1)		# borrow even A[4][0]
 
@@ -768,16 +784,16 @@ SHA3_absorb:
 
 	jal	__KeccakF1600
 
-	ld	$t1, 8*0($sp)			# pull A[][]
+	POP	$t1, __SIZEOF_POINTER__*0($sp)	# pull A[][]
 
 	sd	$A[4][1], 0xa8($t1)
 	sd	$A[4][2], 0xb0($t1)
 	sd	$A[4][3], 0xb8($t1)
 	sd	$A[4][4], 0xc0($t1)
 
-	ld	$bsz, 8*3($sp)
-	ld	$len, 8*2($sp)
-	ld	$inp, 8*1($sp)			# pointer to next block
+	ld	$bsz, __SIZEOF_POINTER__*3($sp)
+	ld	$len, __SIZEOF_POINTER__*2($sp)
+	POP	$inp, __SIZEOF_POINTER__*1($sp)	# pointer to next block
 
 	bgeu	$len, $bsz, .Loop_absorb	# len < bsz?
 
@@ -814,20 +830,20 @@ SHA3_absorb:
 
 	mv	$a0, $len			# return value
 
-	ld	$ra,  8*19($sp)
-	ld	$s0,  8*18($sp)
-	ld	$s1,  8*17($sp)
-	ld	$s2,  8*16($sp)
-	ld	$s3,  8*15($sp)
-	ld	$s4,  8*14($sp)
-	ld	$s5,  8*13($sp)
-	ld	$s6,  8*12($sp)
-	ld	$s7,  8*11($sp)
-	ld	$s8,  8*10($sp)
-	ld	$s9,  8*9($sp)
-	ld	$s10, 8*8($sp)
-	ld	$s11, 8*7($sp)
-	addi	$sp, $sp, 8*20
+	POP	$ra,  __SIZEOF_POINTER__*19($sp)
+	POP	$s0,  __SIZEOF_POINTER__*18($sp)
+	POP	$s1,  __SIZEOF_POINTER__*17($sp)
+	POP	$s2,  __SIZEOF_POINTER__*16($sp)
+	POP	$s3,  __SIZEOF_POINTER__*15($sp)
+	POP	$s4,  __SIZEOF_POINTER__*14($sp)
+	POP	$s5,  __SIZEOF_POINTER__*13($sp)
+	POP	$s6,  __SIZEOF_POINTER__*12($sp)
+	POP	$s7,  __SIZEOF_POINTER__*11($sp)
+	POP	$s8,  __SIZEOF_POINTER__*10($sp)
+	POP	$s9,  __SIZEOF_POINTER__*9($sp)
+	POP	$s10, __SIZEOF_POINTER__*8($sp)
+	POP	$s11, __SIZEOF_POINTER__*7($sp)
+	caddi	$sp, $sp, __SIZEOF_POINTER__*20
 	ret
 
 .Labsorb_abort:
@@ -843,23 +859,23 @@ $code.=<<___;
 .globl	SHA3_squeeze
 .type	SHA3_squeeze, \@function
 SHA3_squeeze:
-	addi	$sp, $sp, -8*6
+	caddi	$sp, $sp, -__SIZEOF_POINTER__*6
 
-	sd	$ra, 8*5($sp)
-	sd	$s0, 8*3($sp)
-	sd	$s1, 8*2($sp)
-	sd	$s2, 8*1($sp)
-	sd	$s3, 8*0($sp)
+	PUSH	$ra, __SIZEOF_POINTER__*5($sp)
+	PUSH	$s0, __SIZEOF_POINTER__*3($sp)
+	PUSH	$s1, __SIZEOF_POINTER__*2($sp)
+	PUSH	$s2, __SIZEOF_POINTER__*1($sp)
+	PUSH	$s3, __SIZEOF_POINTER__*0($sp)
 
-	mv	$A_flat, $a0
-	mv	$out, $a1
+	cmove	$A_flat, $a0
+	cmove	$out, $a1
 	mv	$len, $a2
 	mv	$bsz, $a3
 
 .Loop_squeeze:
 	ld	$a4, 0($a0)
 	sltu	$ra, $len, 8			# len < 8?
-	add	$a0, $a0, 8
+	cadd	$a0, $a0, 8
 	bnez	$ra, .Lsqueeze_tail
 
 	srl	$a5, $a4, 8
@@ -878,33 +894,33 @@ SHA3_squeeze:
 	sb	$a6, 6($out)
 	addi	$len, $len, -8			# len -= 8
 	sb	$a7, 7($out)
-	addi	$out, $out, 8
+	caddi	$out, $out, 8
 	beqz	$len, .Lsqueeze_done
 
 	addi	$a3, $a3, -8
 	bnez	$a3, .Loop_squeeze
 
-	mv	$a0, $A_flat
+	cmove	$a0, $A_flat
 	jal	KeccakF1600
 
-	mv	$a0, $A_flat
+	cmove	$a0, $A_flat
 	mv	$a3, $bsz
 	j	.Loop_squeeze
 
 .Lsqueeze_tail:
 	sb	$a4, 0($out)
-	addi	$out, $out, 1
+	caddi	$out, $out, 1
 	addi	$len, $len, -1
 	srl	$a4, $a4, 8
 	bnez	$len, .Lsqueeze_tail
 
 .Lsqueeze_done:
-	ld	$ra, 8*5($sp)
-	ld	$s0, 8*3($sp)
-	ld	$s1, 8*2($sp)
-	ld	$s2, 8*1($sp)
-	ld	$s3, 8*0($sp)
-	addi	$sp, $sp, 8*6
+	POP	$ra, __SIZEOF_POINTER__*5($sp)
+	POP	$s0, __SIZEOF_POINTER__*3($sp)
+	POP	$s1, __SIZEOF_POINTER__*2($sp)
+	POP	$s2, __SIZEOF_POINTER__*1($sp)
+	POP	$s3, __SIZEOF_POINTER__*0($sp)
+	caddi	$sp, $sp, __SIZEOF_POINTER__*6
 	ret
 .size	SHA3_squeeze, .-SHA3_squeeze
 ___
@@ -954,15 +970,26 @@ my @T = map("x$_", (6..9));
 
 $code.=<<___;
 #if __riscv_xlen == 32
-# define PUSH	sw
-# define POP	lw
+# if __SIZEOF_POINTER__ == 8
+#  define PUSH	csc
+#  define POP	clc
+# else
+#  define PUSH	sw
+#  define POP	lw
+# endif
 # define srlw	srl
-# define sllw	sll
+# define rorw	ror
+#elif __riscv_xlen == 64
+# if __SIZEOF_POINTER__ == 16
+#  define PUSH	csc
+#  define POP	clc
+# else
+#  define PUSH	sd
+#  define POP	ld
+# endif
 #else
-# define PUSH	sd
-# define POP	ld
+# error "unsupported __riscv_xlen"
 #endif
-#define __SIZEOF_REG_T__	(__riscv_xlen/8)
 
 .text
 
@@ -970,10 +997,10 @@ $code.=<<___;
 
 .type	__KeccakF1600, \@function
 __KeccakF1600:
-	addi	$sp, $sp, -224
+	caddi	$sp, $sp, -224
 
-	mv	$a1, $sp
-	lla	$t0, iotas
+	cmove	$a1, $sp
+	cllc	$t0, iotas
 	lw	@D[0], $A[4][0]+0($a0)
 	lw	@D[1], $A[4][0]+4($a0)
 	lw	@D[2], $A[4][1]+0($a0)
@@ -1161,7 +1188,7 @@ __KeccakF1600:
 	rorw	@C[3], @C[3], 32-22
 	 lw	@T[3], 4($t0)
 	rorw	@C[4], @C[4], 31-21
-	 add	$t0, $t0, 8
+	 cadd	$t0, $t0, 8
 	rorw	@C[5], @C[5], 32-21
 	rorw	@C[6], @C[6], 31-10
 	rorw	@C[7], @C[7], 32-10
@@ -1198,7 +1225,7 @@ __KeccakF1600:
 
 	 lw	@T[2], 0($t0)		# *iotas++
 	 lw	@T[3], 4($t0)
-	 add	$t0, $t0, 8
+	 cadd	$t0, $t0, 8
 #endif
 
 	or	@T[0], @C[2], @C[4]
@@ -1545,7 +1572,7 @@ __KeccakF1600:
 	lw	@C[0], $A[0][2]+0($a0)
 	lw	@C[1], $A[0][2]+4($a0)
 	lw	@C[2], $A[1][3]+4($a0)	# flip order
-	 xor	$a1, $a1, $a0		# xchg	$a0, $a1
+	 cmove	@T[0], $a0		# xchg	$a0, $a1
 	lw	@C[3], $A[1][3]+0($a0)
 	xor	@C[0], @C[0], @D[4]
 	lw	@C[4], $A[2][4]+4($a0)	# flip order
@@ -1559,10 +1586,10 @@ __KeccakF1600:
 	lw	@C[8], $A[4][1]+0($a0)
 	xor	@C[5], @C[5], @D[8]
 	lw	@C[9], $A[4][1]+4($a0)
-	 xor	$a0, $a0, $a1
+	 cmove	$a0, $a1
 	xor	@C[6], @C[6], @D[1]	# flip order
 	xor	@C[7], @C[7], @D[0]
-	 xor	$a1, $a1, $a0
+	 cmove	$a1, @T[0]
 	xor	@C[8], @C[8], @D[2]
 	xor	@C[9], @C[9], @D[3]
 
@@ -1649,26 +1676,26 @@ __KeccakF1600:
 	sw	@D[9], $A[4][4]+4($a0)
 	bnez	@T[0], .Loop
 
-	addi	$sp, $sp, 224
+	caddi	$sp, $sp, 224
 	ret
 .size	__KeccakF1600, .-__KeccakF1600
 
 .type	KeccakF1600, \@function
 KeccakF1600:
-	addi	$sp,  $sp, -__SIZEOF_REG_T__*16
-	PUSH	$ra,  __SIZEOF_REG_T__*15($sp)
-	PUSH	$s0,  __SIZEOF_REG_T__*14($sp)
-	PUSH	$s1,  __SIZEOF_REG_T__*13($sp)
-	PUSH	$s2,  __SIZEOF_REG_T__*12($sp)
-	PUSH	$s3,  __SIZEOF_REG_T__*11($sp)
-	PUSH	$s4,  __SIZEOF_REG_T__*10($sp)
-	PUSH	$s5,  __SIZEOF_REG_T__*9($sp)
-	PUSH	$s6,  __SIZEOF_REG_T__*8($sp)
-	PUSH	$s7,  __SIZEOF_REG_T__*7($sp)
-	PUSH	$s8,  __SIZEOF_REG_T__*6($sp)
-	PUSH	$s9,  __SIZEOF_REG_T__*5($sp)
-	PUSH	$s10, __SIZEOF_REG_T__*4($sp)
-	PUSH	$s11, __SIZEOF_REG_T__*3($sp)
+	caddi	$sp,  $sp, -__SIZEOF_POINTER__*16
+	PUSH	$ra,  __SIZEOF_POINTER__*15($sp)
+	PUSH	$s0,  __SIZEOF_POINTER__*14($sp)
+	PUSH	$s1,  __SIZEOF_POINTER__*13($sp)
+	PUSH	$s2,  __SIZEOF_POINTER__*12($sp)
+	PUSH	$s3,  __SIZEOF_POINTER__*11($sp)
+	PUSH	$s4,  __SIZEOF_POINTER__*10($sp)
+	PUSH	$s5,  __SIZEOF_POINTER__*9($sp)
+	PUSH	$s6,  __SIZEOF_POINTER__*8($sp)
+	PUSH	$s7,  __SIZEOF_POINTER__*7($sp)
+	PUSH	$s8,  __SIZEOF_POINTER__*6($sp)
+	PUSH	$s9,  __SIZEOF_POINTER__*5($sp)
+	PUSH	$s10, __SIZEOF_POINTER__*4($sp)
+	PUSH	$s11, __SIZEOF_POINTER__*3($sp)
 
 	lw	$s0, $A[0][1]+0($a0)
 	lw	$s1, $A[0][1]+4($a0)
@@ -1746,20 +1773,20 @@ KeccakF1600:
 	sw	$a6, $A[4][0]+0($a0)
 	sw	$a7, $A[4][0]+4($a0)
 
-	POP	$ra,  __SIZEOF_REG_T__*15($sp)
-	POP	$s0,  __SIZEOF_REG_T__*14($sp)
-	POP	$s1,  __SIZEOF_REG_T__*13($sp)
-	POP	$s2,  __SIZEOF_REG_T__*12($sp)
-	POP	$s3,  __SIZEOF_REG_T__*11($sp)
-	POP	$s4,  __SIZEOF_REG_T__*10($sp)
-	POP	$s5,  __SIZEOF_REG_T__*9($sp)
-	POP	$s6,  __SIZEOF_REG_T__*8($sp)
-	POP	$s7,  __SIZEOF_REG_T__*7($sp)
-	POP	$s8,  __SIZEOF_REG_T__*6($sp)
-	POP	$s9,  __SIZEOF_REG_T__*5($sp)
-	POP	$s10, __SIZEOF_REG_T__*4($sp)
-	POP	$s11, __SIZEOF_REG_T__*3($sp)
-	addi	$sp,  $sp, __SIZEOF_REG_T__*16
+	POP	$ra,  __SIZEOF_POINTER__*15($sp)
+	POP	$s0,  __SIZEOF_POINTER__*14($sp)
+	POP	$s1,  __SIZEOF_POINTER__*13($sp)
+	POP	$s2,  __SIZEOF_POINTER__*12($sp)
+	POP	$s3,  __SIZEOF_POINTER__*11($sp)
+	POP	$s4,  __SIZEOF_POINTER__*10($sp)
+	POP	$s5,  __SIZEOF_POINTER__*9($sp)
+	POP	$s6,  __SIZEOF_POINTER__*8($sp)
+	POP	$s7,  __SIZEOF_POINTER__*7($sp)
+	POP	$s8,  __SIZEOF_POINTER__*6($sp)
+	POP	$s9,  __SIZEOF_POINTER__*5($sp)
+	POP	$s10, __SIZEOF_POINTER__*4($sp)
+	POP	$s11, __SIZEOF_POINTER__*3($sp)
+	caddi	$sp,  $sp, __SIZEOF_POINTER__*16
 	ret
 .size	KeccakF1600, .-KeccakF1600
 ___
@@ -1769,21 +1796,21 @@ $code.=<<___;
 .globl	SHA3_absorb
 .type	SHA3_absorb, \@function
 SHA3_absorb:
-	addi	$sp,  $sp, -__SIZEOF_REG_T__*20
+	caddi	$sp,  $sp, -__SIZEOF_POINTER__*20
 	bltu	$len, $bsz, .Labsorb_abort	# len < bsz?
-	PUSH	$ra,  __SIZEOF_REG_T__*19($sp)
-	PUSH	$s0,  __SIZEOF_REG_T__*18($sp)
-	PUSH	$s1,  __SIZEOF_REG_T__*17($sp)
-	PUSH	$s2,  __SIZEOF_REG_T__*16($sp)
-	PUSH	$s3,  __SIZEOF_REG_T__*15($sp)
-	PUSH	$s4,  __SIZEOF_REG_T__*14($sp)
-	PUSH	$s5,  __SIZEOF_REG_T__*13($sp)
-	PUSH	$s6,  __SIZEOF_REG_T__*12($sp)
-	PUSH	$s7,  __SIZEOF_REG_T__*11($sp)
-	PUSH	$s8,  __SIZEOF_REG_T__*10($sp)
-	PUSH	$s9,  __SIZEOF_REG_T__*9($sp)
-	PUSH	$s10, __SIZEOF_REG_T__*8($sp)
-	PUSH	$s11, __SIZEOF_REG_T__*7($sp)
+	PUSH	$ra,  __SIZEOF_POINTER__*19($sp)
+	PUSH	$s0,  __SIZEOF_POINTER__*18($sp)
+	PUSH	$s1,  __SIZEOF_POINTER__*17($sp)
+	PUSH	$s2,  __SIZEOF_POINTER__*16($sp)
+	PUSH	$s3,  __SIZEOF_POINTER__*15($sp)
+	PUSH	$s4,  __SIZEOF_POINTER__*14($sp)
+	PUSH	$s5,  __SIZEOF_POINTER__*13($sp)
+	PUSH	$s6,  __SIZEOF_POINTER__*12($sp)
+	PUSH	$s7,  __SIZEOF_POINTER__*11($sp)
+	PUSH	$s8,  __SIZEOF_POINTER__*10($sp)
+	PUSH	$s9,  __SIZEOF_POINTER__*9($sp)
+	PUSH	$s10, __SIZEOF_POINTER__*8($sp)
+	PUSH	$s11, __SIZEOF_POINTER__*7($sp)
 
 	lw	$s0, $A[0][1]+0($a0)
 	lw	$s1, $A[0][1]+4($a0)
@@ -1822,14 +1849,14 @@ SHA3_absorb:
 	sw	$a6, $A[4][0]+0($a0)
 	sw	$a7, $A[4][0]+4($a0)
 
-	PUSH	$bsz, __SIZEOF_REG_T__*2($sp)
+	PUSH	$bsz, __SIZEOF_POINTER__*2($sp)
 
 .Loop_absorb:
 	sub	$t1, $len, $bsz
-	add	$t2, $inp, $bsz		# next input block
-	PUSH	$t1, __SIZEOF_REG_T__*1($sp)
-	PUSH	$t2, __SIZEOF_REG_T__*0($sp)
-	mv	$A_flat, $a0
+	cadd	$t2, $inp, $bsz		# next input block
+	PUSH	$t1, __SIZEOF_POINTER__*1($sp)
+	PUSH	$t2, __SIZEOF_POINTER__*0($sp)
+	cmove	$A_flat, $a0
 #ifdef	__riscv_zbb
 	lui	$s0, 0x55555
 	lui	$s1, 0x33333
@@ -1868,7 +1895,7 @@ SHA3_absorb:
 	or	$a5, $a5, $t0
 	or	$a4, $a4, $t1
 	or	$a5, $a5, $t2
-	addi	$inp, $inp, 8
+	caddi	$inp, $inp, 8
 
 	lw	$s10, 0($A_flat)
 	lw	$s11, 4($A_flat)
@@ -1940,14 +1967,14 @@ SHA3_absorb:
 	sw	$s10, 0($A_flat)
 	addi	$bsz, $bsz, -8
 	sw	$s11, 4($A_flat)
-	addi	$A_flat, $A_flat, 8
+	caddi	$A_flat, $A_flat, 8
 	bnez	$bsz, .Loop_block
 
 	jal	__KeccakF1600
 
-	POP	$bsz, __SIZEOF_REG_T__*2($sp)
-	POP	$len, __SIZEOF_REG_T__*1($sp)
-	POP	$inp, __SIZEOF_REG_T__*0($sp)
+	POP	$bsz, __SIZEOF_POINTER__*2($sp)
+	POP	$len, __SIZEOF_POINTER__*1($sp)
+	POP	$inp, __SIZEOF_POINTER__*0($sp)
 
 	bgeu	$len, $bsz, .Loop_absorb
 
@@ -1988,22 +2015,22 @@ SHA3_absorb:
 	sw	$a6, $A[4][0]+0($a0)
 	sw	$a7, $A[4][0]+4($a0)
 
-	POP	$ra,  __SIZEOF_REG_T__*19($sp)
-	POP	$s0,  __SIZEOF_REG_T__*18($sp)
-	POP	$s1,  __SIZEOF_REG_T__*17($sp)
-	POP	$s2,  __SIZEOF_REG_T__*16($sp)
-	POP	$s3,  __SIZEOF_REG_T__*15($sp)
-	POP	$s4,  __SIZEOF_REG_T__*14($sp)
-	POP	$s5,  __SIZEOF_REG_T__*13($sp)
-	POP	$s6,  __SIZEOF_REG_T__*12($sp)
-	POP	$s7,  __SIZEOF_REG_T__*11($sp)
-	POP	$s8,  __SIZEOF_REG_T__*10($sp)
-	POP	$s9,  __SIZEOF_REG_T__*9($sp)
-	POP	$s10, __SIZEOF_REG_T__*8($sp)
-	POP	$s11, __SIZEOF_REG_T__*7($sp)
+	POP	$ra,  __SIZEOF_POINTER__*19($sp)
+	POP	$s0,  __SIZEOF_POINTER__*18($sp)
+	POP	$s1,  __SIZEOF_POINTER__*17($sp)
+	POP	$s2,  __SIZEOF_POINTER__*16($sp)
+	POP	$s3,  __SIZEOF_POINTER__*15($sp)
+	POP	$s4,  __SIZEOF_POINTER__*14($sp)
+	POP	$s5,  __SIZEOF_POINTER__*13($sp)
+	POP	$s6,  __SIZEOF_POINTER__*12($sp)
+	POP	$s7,  __SIZEOF_POINTER__*11($sp)
+	POP	$s8,  __SIZEOF_POINTER__*10($sp)
+	POP	$s9,  __SIZEOF_POINTER__*9($sp)
+	POP	$s10, __SIZEOF_POINTER__*8($sp)
+	POP	$s11, __SIZEOF_POINTER__*7($sp)
 .Labsorb_abort:
 	mv	$a0, $len		# return value
-	addi	$sp, $sp, __SIZEOF_REG_T__*20
+	caddi	$sp, $sp, __SIZEOF_POINTER__*20
 	ret
 .size	SHA3_absorb, .-SHA3_absorb
 ___
@@ -2015,23 +2042,23 @@ $code.=<<___;
 .align	5
 .type	SHA3_squeeze, \@function
 SHA3_squeeze:
-	addi	$sp,  $sp, -__SIZEOF_REG_T__*16
-	PUSH	$ra,  __SIZEOF_REG_T__*15($sp)
-	PUSH	$s0,  __SIZEOF_REG_T__*14($sp)
-	PUSH	$s1,  __SIZEOF_REG_T__*13($sp)
-	PUSH	$s2,  __SIZEOF_REG_T__*12($sp)
-	PUSH	$s3,  __SIZEOF_REG_T__*11($sp)
-	PUSH	$s4,  __SIZEOF_REG_T__*10($sp)
-	PUSH	$s5,  __SIZEOF_REG_T__*9($sp)
-	PUSH	$s6,  __SIZEOF_REG_T__*8($sp)
-	PUSH	$s7,  __SIZEOF_REG_T__*7($sp)
-	PUSH	$s8,  __SIZEOF_REG_T__*6($sp)
-	PUSH	$s9,  __SIZEOF_REG_T__*5($sp)
-	PUSH	$s10, __SIZEOF_REG_T__*4($sp)
-	PUSH	$s11, __SIZEOF_REG_T__*3($sp)
+	caddi	$sp,  $sp, -__SIZEOF_POINTER__*16
+	PUSH	$ra,  __SIZEOF_POINTER__*15($sp)
+	PUSH	$s0,  __SIZEOF_POINTER__*14($sp)
+	PUSH	$s1,  __SIZEOF_POINTER__*13($sp)
+	PUSH	$s2,  __SIZEOF_POINTER__*12($sp)
+	PUSH	$s3,  __SIZEOF_POINTER__*11($sp)
+	PUSH	$s4,  __SIZEOF_POINTER__*10($sp)
+	PUSH	$s5,  __SIZEOF_POINTER__*9($sp)
+	PUSH	$s6,  __SIZEOF_POINTER__*8($sp)
+	PUSH	$s7,  __SIZEOF_POINTER__*7($sp)
+	PUSH	$s8,  __SIZEOF_POINTER__*6($sp)
+	PUSH	$s9,  __SIZEOF_POINTER__*5($sp)
+	PUSH	$s10, __SIZEOF_POINTER__*4($sp)
+	PUSH	$s11, __SIZEOF_POINTER__*3($sp)
 
-	PUSH	$bsz, __SIZEOF_REG_T__*2($sp)
-	mv	$A_flat, $a0
+	PUSH	$bsz, __SIZEOF_POINTER__*2($sp)
+	cmove	$A_flat, $a0
 
 #ifdef	__riscv_zbb
 	lui	$s4, 0x55555
@@ -2053,7 +2080,7 @@ SHA3_squeeze:
 .Loop_squeeze:
 	lw	$a4, 0($A_flat)
 	lw	$a5, 4($A_flat)
-	addi	$A_flat, $A_flat, 8
+	caddi	$A_flat, $A_flat, 8
 
 #ifdef	__riscv_zbb
 	and	$t0, $a4, $s3		# t0 = lo & 0x0000ffff;
@@ -2125,7 +2152,7 @@ SHA3_squeeze:
 	addi	$len, $len, -4
 	sb	$t0, 3($out)
 	sltiu	$ra, $len, 4
-	addi	$out, $out, 4
+	caddi	$out, $out, 4
 	mv	$a4, $a5
 	bnez	$ra, .Lsqueeze_tail
 
@@ -2137,46 +2164,46 @@ SHA3_squeeze:
 	sb	$a7, 2($out)
 	addi	$len, $len, -4
 	sb	$t0, 3($out)
-	addi	$out, $out, 4
+	caddi	$out, $out, 4
 	beqz	$len, .Lsqueeze_done
 
 	addi	$bsz, $bsz, -8
 	bnez	$bsz, .Loop_squeeze
 
-	PUSH	$len, __SIZEOF_REG_T__*1($sp)
-	PUSH	$out, __SIZEOF_REG_T__*0($sp)
+	PUSH	$len, __SIZEOF_POINTER__*1($sp)
+	PUSH	$out, __SIZEOF_POINTER__*0($sp)
 
 	jal	KeccakF1600
 
-	POP	$out, __SIZEOF_REG_T__*0($sp)
-	POP	$len, __SIZEOF_REG_T__*1($sp)
-	POP	$bsz, __SIZEOF_REG_T__*2($sp)
-	mv	$A_flat, $a0
+	POP	$out, __SIZEOF_POINTER__*0($sp)
+	POP	$len, __SIZEOF_POINTER__*1($sp)
+	POP	$bsz, __SIZEOF_POINTER__*2($sp)
+	cmove	$A_flat, $a0
 	j	.Loop_squeeze
 
 .Lsqueeze_tail:
 	beqz	$len, .Lsqueeze_done
 	addi	$len, $len, -1
 	sb	$a4, 0($out)
-	addi	$out, $out, 1
+	caddi	$out, $out, 1
 	srlw	$a4, $a4, 8
 	j	.Lsqueeze_tail
 
 .Lsqueeze_done:
-	POP	$ra,  __SIZEOF_REG_T__*15($sp)
-	POP	$s0,  __SIZEOF_REG_T__*14($sp)
-	POP	$s1,  __SIZEOF_REG_T__*13($sp)
-	POP	$s2,  __SIZEOF_REG_T__*12($sp)
-	POP	$s3,  __SIZEOF_REG_T__*11($sp)
-	POP	$s4,  __SIZEOF_REG_T__*10($sp)
-	POP	$s5,  __SIZEOF_REG_T__*9($sp)
-	POP	$s6,  __SIZEOF_REG_T__*8($sp)
-	POP	$s7,  __SIZEOF_REG_T__*7($sp)
-	POP	$s8,  __SIZEOF_REG_T__*6($sp)
-	POP	$s9,  __SIZEOF_REG_T__*5($sp)
-	POP	$s10, __SIZEOF_REG_T__*4($sp)
-	POP	$s11, __SIZEOF_REG_T__*3($sp)
-	addi	$sp,  $sp, __SIZEOF_REG_T__*16
+	POP	$ra,  __SIZEOF_POINTER__*15($sp)
+	POP	$s0,  __SIZEOF_POINTER__*14($sp)
+	POP	$s1,  __SIZEOF_POINTER__*13($sp)
+	POP	$s2,  __SIZEOF_POINTER__*12($sp)
+	POP	$s3,  __SIZEOF_POINTER__*11($sp)
+	POP	$s4,  __SIZEOF_POINTER__*10($sp)
+	POP	$s5,  __SIZEOF_POINTER__*9($sp)
+	POP	$s6,  __SIZEOF_POINTER__*8($sp)
+	POP	$s7,  __SIZEOF_POINTER__*7($sp)
+	POP	$s8,  __SIZEOF_POINTER__*6($sp)
+	POP	$s9,  __SIZEOF_POINTER__*5($sp)
+	POP	$s10, __SIZEOF_POINTER__*4($sp)
+	POP	$s11, __SIZEOF_POINTER__*3($sp)
+	caddi	$sp,  $sp, __SIZEOF_POINTER__*16
 	ret
 .size	SHA3_squeeze, .-SHA3_squeeze
 ___
@@ -2242,5 +2269,19 @@ iotas:
 ___
 }}}
 
-print $code;
+foreach (split("\n", $code)) {
+    if ($flavour =~ "cheri") {
+	s/\(x([0-9]+)\)/(c$1)/ and s/\b([ls][bhwd]u?)\b/c$1/;
+	s/\b(PUSH|POP|cllc)(\s+)x([0-9]+)/$1$2c$3/ or
+	s/\b(ret|jal)\b/c$1/;
+	s/\bcaddi?\b/cincoffset/ and s/\bx([0-9]+,)/c$1/g or
+	m/\bcmove\b/ and s/\bx([0-9]+)/c$1/g;
+    } else {
+	s/\bcaddi?\b/add/ or
+	s/\bcmove\b/mv/ or
+	s/\bcllc\b/lla/;
+    }
+    print $_, "\n";
+}
+
 close STDOUT;
