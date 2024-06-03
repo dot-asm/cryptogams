@@ -411,7 +411,7 @@ poly1305_blocks:
 	PUSH	$s8, __SIZEOF_REG_T__*2($sp)
 
 	andi	$shr,$inp,3
-	andi	$inp,$inp,-8		# align $inp
+	andi	$inp,$inp,-4		# align $inp
 	slli	$shr,$shr,3		# byte to bit offset
 
 	lw	$h0,0($ctx)		# load hash value
