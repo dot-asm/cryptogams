@@ -157,7 +157,11 @@ $code.=<<___	if ($flavour =~ /32/);
 #endif
 ___
 $code.=<<___;
+#ifndef	__CHERI_PURE_CAPABILITY__
 	ret
+#else
+	cret
+#endif
 .size	ct_umull,.-ct_umull
 ___
 
