@@ -15,6 +15,10 @@
 # 1.9 cpb on C910, ~75% improvement. 1.75 cpb on JH7110 (U74 with
 # apparently better multiplier), ~120% faster.
 #
+# June 2024.
+#
+# Add CHERI support.
+#
 ######################################################################
 #
 ($zero,$ra,$sp,$gp,$tp)=map("x$_",(0..4));
@@ -37,6 +41,18 @@ my ($ctx,$inp,$len,$padbit) = ($a0,$a1,$a2,$a3);
 my ($in0,$in1,$tmp0,$tmp1,$tmp2,$tmp3,$tmp4) = ($a4,$a5,$a6,$a7,$t0,$t1,$t2);
 
 $code.=<<___;
+#if __riscv_xlen == 64
+# if __SIZEOF_POINTER__ == 16
+#  define PUSH	csc
+#  define POP	clc
+# else
+#  define PUSH	sd
+#  define POP	ld
+# endif
+#else
+# error "unsupported __riscv_xlen"
+#endif
+
 .option	pic
 .text
 
@@ -49,11 +65,14 @@ poly1305_init:
 
 	beqz	$inp,.Lno_key
 
+#ifndef	__CHERI_PURE_CAPABILITY__
 	andi	$tmp0,$inp,7		# $inp % 8
 	andi	$inp,$inp,-8		# align $inp
 	slli	$tmp0,$tmp0,3		# byte to bit offset
+#endif
 	ld	$in0,0($inp)
 	ld	$in1,8($inp)
+#ifndef	__CHERI_PURE_CAPABILITY__
 	beqz	$tmp0,.Laligned_key
 
 	ld	$tmp2,16($inp)
@@ -66,6 +85,7 @@ poly1305_init:
 	or	$in1,$in1,$tmp2
 
 .Laligned_key:
+#endif
 	li	$tmp0,1
 	slli	$tmp0,$tmp0,32		# 0x0000000100000000
 	addi	$tmp0,$tmp0,-63		# 0x00000000ffffffc1
@@ -96,19 +116,21 @@ $code.=<<___;
 .globl	poly1305_blocks
 .type	poly1305_blocks,\@function
 poly1305_blocks:
-	srli	$len,$len,4		# number of complete blocks
+	andi	$len,$len,-16		# complete blocks only
 	beqz	$len,.Lno_data
 
-	addi	$sp,$sp,-32
-	sd	$s0,24($sp)
-	sd	$s1,16($sp)
-	sd	$s2,8($sp)
-	sd	$s3,0($sp)
+	caddi	$sp,$sp,-4*__SIZEOF_POINTER__
+	PUSH	$s0,3*__SIZEOF_POINTER__($sp)
+	PUSH	$s1,2*__SIZEOF_POINTER__($sp)
+	PUSH	$s2,1*__SIZEOF_POINTER__($sp)
+	PUSH	$s3,0*__SIZEOF_POINTER__($sp)
 
+#ifndef	__CHERI_PURE_CAPABILITY__
 	andi	$shr,$inp,7
 	andi	$inp,$inp,-8		# align $inp
 	slli	$shr,$shr,3		# byte to bit offset
 	neg	$shl,$shr		# implicit &63 in sll
+#endif
 
 	ld	$h0,0($ctx)		# load hash value
 	ld	$h1,8($ctx)
@@ -118,12 +140,12 @@ poly1305_blocks:
 	ld	$r1,32($ctx)
 	ld	$rs1,40($ctx)
 
-	slli	$len,$len,4
 	add	$len,$len,$inp		# end of buffer
 
 .Loop:
 	ld	$in0,0($inp)		# load input
 	ld	$in1,8($inp)
+#ifndef	__CHERI_PURE_CAPABILITY__
 	beqz	$shr,.Laligned_inp
 
 	ld	$tmp2,16($inp)
@@ -135,7 +157,8 @@ poly1305_blocks:
 	or	$in1,$in1,$tmp2
 
 .Laligned_inp:
-	addi	$inp,$inp,16
+#endif
+	caddi	$inp,$inp,16
 
 	andi	$tmp0,$h2,-4		# modulo-scheduled reduction
 	srli	$tmp1,$h2,2
@@ -193,11 +216,11 @@ poly1305_blocks:
 	sd	$h1,8($ctx)
 	sd	$h2,16($ctx)
 
-	ld	$s0,24($sp)		# epilogue
-	ld	$s1,16($sp)
-	ld	$s2,8($sp)
-	ld	$s3,0($sp)
-	addi	$sp,$sp,32
+	POP	$s0,3*__SIZEOF_POINTER__($sp)		# epilogue
+	POP	$s1,2*__SIZEOF_POINTER__($sp)
+	POP	$s2,1*__SIZEOF_POINTER__($sp)
+	POP	$s3,0*__SIZEOF_POINTER__($sp)
+	caddi	$sp,$sp,4*__SIZEOF_POINTER__
 
 .Lno_data:
 	ret
@@ -303,20 +326,31 @@ my ($in0,$in1,$in2,$in3,$tmp0,$tmp1,$tmp2,$tmp3) =
 
 $code.=<<___;
 #if __riscv_xlen == 32
-# define PUSH	sw
-# define POP	lw
+# if __SIZEOF_POINTER__ == 8
+#  define PUSH	csc
+#  define POP	clc
+# else
+#  define PUSH	sw
+#  define POP	lw
+# endif
 # define MULX(hi,lo,a,b)	mulhu hi,a,b; mul lo,a,b
 # define srlw	srl
 # define sllw	sll
 # define addw	add
 # define addiw	addi
 # define mulw	mul
-#else
-# define PUSH	sd
-# define POP	ld
+#elif __riscv_xlen == 64
+# if __SIZEOF_POINTER__ == 16
+#  define PUSH	csc
+#  define POP	clc
+# else
+#  define PUSH	sd
+#  define POP	ld
+# endif
 # define MULX(hi,lo,a,b)	slli b,b,32; srli b,b,32; mul hi,a,b; addiw lo,hi,0; srai hi,hi,32
+#else
+# error "unsupported __riscv_xlen"
 #endif
-#define __SIZEOF_REG_T__	(__riscv_xlen/8)
 
 .option	pic
 .text
@@ -332,13 +366,16 @@ poly1305_init:
 
 	beqz	$inp,.Lno_key
 
+#ifndef	__CHERI_PURE_CAPABILITY__
 	andi	$tmp0,$inp,3		# $inp % 4
 	sub	$inp,$inp,$tmp0		# align $inp
 	sll	$tmp0,$tmp0,3		# byte to bit offset
+#endif
 	lw	$in0,0($inp)
 	lw	$in1,4($inp)
 	lw	$in2,8($inp)
 	lw	$in3,12($inp)
+#ifndef	__CHERI_PURE_CAPABILITY__
 	beqz	$tmp0,.Laligned_key
 
 	lw	$tmp2,16($inp)
@@ -356,6 +393,7 @@ poly1305_init:
 	sllw	$tmp2,$tmp2,$tmp1
 	or	$in3,$in3,$tmp2
 .Laligned_key:
+#endif
 
 	lui	$tmp0,0x10000
 	addi	$tmp0,$tmp0,-1		# 0x0fffffff
@@ -395,24 +433,26 @@ $code.=<<___;
 .globl	poly1305_blocks
 .type	poly1305_blocks,\@function
 poly1305_blocks:
-	srli	$len,$len,4		# number of complete blocks
+	andi	$len,$len,-16		# complete blocks only
 	beqz	$len,.Labort
 
-	addi	$sp,$sp,-__SIZEOF_REG_T__*12
-	PUSH	$ra, __SIZEOF_REG_T__*11($sp)
-	PUSH	$s0, __SIZEOF_REG_T__*10($sp)
-	PUSH	$s1, __SIZEOF_REG_T__*9($sp)
-	PUSH	$s2, __SIZEOF_REG_T__*8($sp)
-	PUSH	$s3, __SIZEOF_REG_T__*7($sp)
-	PUSH	$s4, __SIZEOF_REG_T__*6($sp)
-	PUSH	$s5, __SIZEOF_REG_T__*5($sp)
-	PUSH	$s6, __SIZEOF_REG_T__*4($sp)
-	PUSH	$s7, __SIZEOF_REG_T__*3($sp)
-	PUSH	$s8, __SIZEOF_REG_T__*2($sp)
+	caddi	$sp,$sp,-__SIZEOF_POINTER__*12
+	PUSH	$ra, __SIZEOF_POINTER__*11($sp)
+	PUSH	$s0, __SIZEOF_POINTER__*10($sp)
+	PUSH	$s1, __SIZEOF_POINTER__*9($sp)
+	PUSH	$s2, __SIZEOF_POINTER__*8($sp)
+	PUSH	$s3, __SIZEOF_POINTER__*7($sp)
+	PUSH	$s4, __SIZEOF_POINTER__*6($sp)
+	PUSH	$s5, __SIZEOF_POINTER__*5($sp)
+	PUSH	$s6, __SIZEOF_POINTER__*4($sp)
+	PUSH	$s7, __SIZEOF_POINTER__*3($sp)
+	PUSH	$s8, __SIZEOF_POINTER__*2($sp)
 
+#ifndef	__CHERI_PURE_CAPABILITY__
 	andi	$shr,$inp,3
 	andi	$inp,$inp,-4		# align $inp
 	slli	$shr,$shr,3		# byte to bit offset
+#endif
 
 	lw	$h0,0($ctx)		# load hash value
 	lw	$h1,4($ctx)
@@ -428,7 +468,6 @@ poly1305_blocks:
 	lw	$rs2,40($ctx)
 	lw	$rs3,44($ctx)
 
-	slli	$len,$len,4
 	add	$len,$len,$inp		# end of buffer
 
 .Loop:
@@ -436,6 +475,7 @@ poly1305_blocks:
 	lw	$d1,4($inp)
 	lw	$d2,8($inp)
 	lw	$d3,12($inp)
+#ifndef	__CHERI_PURE_CAPABILITY__
 	beqz	$shr,.Laligned_inp
 
 	lw	$t4,16($inp)
@@ -454,6 +494,7 @@ poly1305_blocks:
 	or	$d3,$d3,$t4
 
 .Laligned_inp:
+#endif
 	srli	$t3,$h4,2		# modulo-scheduled reduction
 	andi	$t4,$h4,-4
 	andi	$h4,$h4,3
@@ -489,7 +530,7 @@ poly1305_blocks:
 	MULX	($t4,$t3,$rs3,$d1)	# d1*s3
 
 	 addw	$h4,$h4,$padbit
-	 addi	$inp,$inp,16
+	 caddi	$inp,$inp,16
 	 addw	$h4,$h4,$h3
 
 	MULX	($t6,$a3,$rs2,$d2)	# d2*s2
@@ -609,17 +650,17 @@ poly1305_blocks:
 	sw	$h3,12($ctx)
 	sw	$h4,16($ctx)
 
-	POP	$ra, __SIZEOF_REG_T__*11($sp)
-	POP	$s0, __SIZEOF_REG_T__*10($sp)
-	POP	$s1, __SIZEOF_REG_T__*9($sp)
-	POP	$s2, __SIZEOF_REG_T__*8($sp)
-	POP	$s3, __SIZEOF_REG_T__*7($sp)
-	POP	$s4, __SIZEOF_REG_T__*6($sp)
-	POP	$s5, __SIZEOF_REG_T__*5($sp)
-	POP	$s6, __SIZEOF_REG_T__*4($sp)
-	POP	$s7, __SIZEOF_REG_T__*3($sp)
-	POP	$s8, __SIZEOF_REG_T__*2($sp)
-	addi	$sp,$sp,__SIZEOF_REG_T__*12
+	POP	$ra, __SIZEOF_POINTER__*11($sp)
+	POP	$s0, __SIZEOF_POINTER__*10($sp)
+	POP	$s1, __SIZEOF_POINTER__*9($sp)
+	POP	$s2, __SIZEOF_POINTER__*8($sp)
+	POP	$s3, __SIZEOF_POINTER__*7($sp)
+	POP	$s4, __SIZEOF_POINTER__*6($sp)
+	POP	$s5, __SIZEOF_POINTER__*5($sp)
+	POP	$s6, __SIZEOF_POINTER__*4($sp)
+	POP	$s7, __SIZEOF_POINTER__*3($sp)
+	POP	$s8, __SIZEOF_POINTER__*2($sp)
+	caddi	$sp,$sp,__SIZEOF_POINTER__*12
 .Labort:
 	ret
 .size	poly1305_blocks,.-poly1305_blocks
@@ -737,5 +778,18 @@ ___
 }
 }}}
 
-print $code;
+foreach (split("\n", $code)) {
+    if ($flavour =~ /^cheri/) {
+	s/\(x([0-9]+)\)/(c$1)/ and s/\b([ls][bhwd]u?)\b/c$1/;
+	s/\b(PUSH|POP)(\s+)x([0-9]+)/$1$2c$3/ or
+	s/\b(ret|jal)\b/c$1/;
+	s/\bcaddi?\b/cincoffset/ and s/\bx([0-9]+,)/c$1/g or
+	m/\bcmove\b/ and s/\bx([0-9]+)/c$1/g;
+    } else {
+	s/\bcaddi?\b/add/ or
+	s/\bcmove\b/mv/;
+    }
+    print $_, "\n";
+}
+
 close STDOUT;
