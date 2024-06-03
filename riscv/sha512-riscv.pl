@@ -9,6 +9,10 @@
 # 36.5/25.0 cycles per one byte processed with SHA256/SHA512, C910 -
 # 27.3/18.0, JH7110 (U74+zbb) - 21.3/14.9.
 #
+# June 2024.
+#
+# Add CHERI support.
+#
 ######################################################################
 ($zero,$ra,$sp,$gp,$tp) = map("x$_",(0..4));
 ($a0,$a1,$a2,$a3,$a4,$a5,$a6,$a7)=map("x$_",(10..17));
@@ -16,6 +20,8 @@
 ($t0,$t1,$t2,$t3,$t4,$t5,$t6)=map("x$_",(5..7, 28..31));
 ######################################################################
 
+$flavour = shift;
+if ($flavour=~/\w[\w\-]*\.\w+$/) { $output=$flavour; undef $flavour; }
 for (@ARGV) { $output=$_ if (/\w[\w\-]*\.\w+$/); }
 open STDOUT,">$output";
 
@@ -51,17 +57,28 @@ if ($output =~ /512/) {
 
 $code.=<<___;
 #if __riscv_xlen == 32
-# define PUSH	sw
-# define POP	lw
+# if __SIZEOF_POINTER__ == 8
+#  define PUSH	csc
+#  define POP	clc
+# else
+#  define PUSH	sw
+#  define POP	lw
+# endif
 # define sllw	sll
 # define srlw	srl
 # define rorw	ror
+#elif __riscv_xlen == 64
+# if __SIZEOF_POINTER__ == 16
+#  define PUSH	csc
+#  define POP	clc
+# else
+#  define PUSH	sd
+#  define POP	ld
+# endif
 #else
-# define PUSH	sd
-# define POP	ld
+# error "unsupported __riscv_xlen"
 #endif
-#define __SIZEOF_REG_T__	(__riscv_xlen/8)
-#define FRAMESIZE		(16*$SZ+16*__SIZEOF_REG_T__)
+#define FRAMESIZE		(16*$SZ+16*__SIZEOF_POINTER__)
 ___
 
 @V=($A,$B,$C,$D,$E,$F,$G,$H)=map("x$_",(5..9,13..15));
@@ -233,19 +250,19 @@ $code.=<<___;
 .globl	sha${label}_block_data_order
 .type	sha${label}_block_data_order,\@function
 sha${label}_block_data_order:
-	addi	$sp,$sp,-FRAMESIZE
-	PUSH	$s0,FRAMESIZE-1*__SIZEOF_REG_T__($sp)
-	PUSH	$s1,FRAMESIZE-2*__SIZEOF_REG_T__($sp)
-	PUSH	$s2,FRAMESIZE-3*__SIZEOF_REG_T__($sp)
-	PUSH	$s3,FRAMESIZE-4*__SIZEOF_REG_T__($sp)
-	PUSH	$s4,FRAMESIZE-5*__SIZEOF_REG_T__($sp)
-	PUSH	$s5,FRAMESIZE-6*__SIZEOF_REG_T__($sp)
-	PUSH	$s6,FRAMESIZE-7*__SIZEOF_REG_T__($sp)
-	PUSH	$s7,FRAMESIZE-8*__SIZEOF_REG_T__($sp)
-	PUSH	$s8,FRAMESIZE-9*__SIZEOF_REG_T__($sp)
-	PUSH	$s9,FRAMESIZE-10*__SIZEOF_REG_T__($sp)
-	PUSH	$s10,FRAMESIZE-11*__SIZEOF_REG_T__($sp)
-	PUSH	$s11,FRAMESIZE-12*__SIZEOF_REG_T__($sp)
+	caddi	$sp,$sp,-FRAMESIZE
+	PUSH	$s0,FRAMESIZE-1*__SIZEOF_POINTER__($sp)
+	PUSH	$s1,FRAMESIZE-2*__SIZEOF_POINTER__($sp)
+	PUSH	$s2,FRAMESIZE-3*__SIZEOF_POINTER__($sp)
+	PUSH	$s3,FRAMESIZE-4*__SIZEOF_POINTER__($sp)
+	PUSH	$s4,FRAMESIZE-5*__SIZEOF_POINTER__($sp)
+	PUSH	$s5,FRAMESIZE-6*__SIZEOF_POINTER__($sp)
+	PUSH	$s6,FRAMESIZE-7*__SIZEOF_POINTER__($sp)
+	PUSH	$s7,FRAMESIZE-8*__SIZEOF_POINTER__($sp)
+	PUSH	$s8,FRAMESIZE-9*__SIZEOF_POINTER__($sp)
+	PUSH	$s9,FRAMESIZE-10*__SIZEOF_POINTER__($sp)
+	PUSH	$s10,FRAMESIZE-11*__SIZEOF_POINTER__($sp)
+	PUSH	$s11,FRAMESIZE-12*__SIZEOF_POINTER__($sp)
 
 	$LD	$A,0*$SZ($ctx)		# load context
 	$LD	$B,1*$SZ($ctx)
@@ -257,8 +274,8 @@ sha${label}_block_data_order:
 	$LD	$H,7*$SZ($ctx)
 
 	sll	@X[15],$len,`log(16*$SZ)/log(2)`
-	lla	$Ktbl,K${label}
-	add	@X[15],$inp,@X[15]	# pointer to the end of input
+	cllc	$Ktbl,K${label}
+	cadd	@X[15],$inp,@X[15]	# pointer to the end of input
 	PUSH	@X[15],16*$SZ($sp)
 
 .Loop:
@@ -309,14 +326,14 @@ for (;$i<32;$i++)
 $code.=<<___;
 	andi	@X[6],@X[6],0x7ff
 	li	@X[7],$lastK
-	addi	$Ktbl,$Ktbl,16*$SZ	# Ktbl+=16
+	caddi	$Ktbl,$Ktbl,16*$SZ	# Ktbl+=16
 	bne	@X[6],@X[7],.L16_xx
 
 	POP	@X[15],16*$SZ($sp)	# restore pointer to the end of input
 	$LD	@X[0],0*$SZ($ctx)
 	$LD	@X[1],1*$SZ($ctx)
 	$LD	@X[2],2*$SZ($ctx)
-	add	$inp,$inp,16*$SZ
+	cadd	$inp,$inp,16*$SZ
 	$LD	@X[3],3*$SZ($ctx)
 	add	$A,$A,@X[0]
 	$LD	@X[4],4*$SZ($ctx)
@@ -339,22 +356,24 @@ $code.=<<___;
 	$ST	$G,6*$SZ($ctx)
 	$ST	$H,7*$SZ($ctx)
 
-	addi	$Ktbl,$Ktbl,`-($rounds-16)*$SZ`	# rewind $Ktbl
-	bne	$inp,@X[15],.Loop
+	caddi	$Ktbl,$Ktbl,`-($rounds-16)*$SZ`	# rewind $Ktbl
+	beq	$inp,@X[15],.Loop_break
+	j	.Loop
+.Loop_break:
 
-	POP	$s0,FRAMESIZE-1*__SIZEOF_REG_T__($sp)
-	POP	$s1,FRAMESIZE-2*__SIZEOF_REG_T__($sp)
-	POP	$s2,FRAMESIZE-3*__SIZEOF_REG_T__($sp)
-	POP	$s3,FRAMESIZE-4*__SIZEOF_REG_T__($sp)
-	POP	$s4,FRAMESIZE-5*__SIZEOF_REG_T__($sp)
-	POP	$s5,FRAMESIZE-6*__SIZEOF_REG_T__($sp)
-	POP	$s6,FRAMESIZE-7*__SIZEOF_REG_T__($sp)
-	POP	$s7,FRAMESIZE-8*__SIZEOF_REG_T__($sp)
-	POP	$s8,FRAMESIZE-9*__SIZEOF_REG_T__($sp)
-	POP	$s9,FRAMESIZE-10*__SIZEOF_REG_T__($sp)
-	POP	$s10,FRAMESIZE-11*__SIZEOF_REG_T__($sp)
-	POP	$s11,FRAMESIZE-12*__SIZEOF_REG_T__($sp)
-	addi	$sp,$sp,FRAMESIZE
+	POP	$s0,FRAMESIZE-1*__SIZEOF_POINTER__($sp)
+	POP	$s1,FRAMESIZE-2*__SIZEOF_POINTER__($sp)
+	POP	$s2,FRAMESIZE-3*__SIZEOF_POINTER__($sp)
+	POP	$s3,FRAMESIZE-4*__SIZEOF_POINTER__($sp)
+	POP	$s4,FRAMESIZE-5*__SIZEOF_POINTER__($sp)
+	POP	$s5,FRAMESIZE-6*__SIZEOF_POINTER__($sp)
+	POP	$s6,FRAMESIZE-7*__SIZEOF_POINTER__($sp)
+	POP	$s7,FRAMESIZE-8*__SIZEOF_POINTER__($sp)
+	POP	$s8,FRAMESIZE-9*__SIZEOF_POINTER__($sp)
+	POP	$s9,FRAMESIZE-10*__SIZEOF_POINTER__($sp)
+	POP	$s10,FRAMESIZE-11*__SIZEOF_POINTER__($sp)
+	POP	$s11,FRAMESIZE-12*__SIZEOF_POINTER__($sp)
+	caddi	$sp,$sp,FRAMESIZE
 	ret
 .size	sha${label}_block_data_order,.-sha${label}_block_data_order
 
@@ -430,6 +449,21 @@ $code.=<<___;
 .align	5
 ___
 
-$code =~ s/\`([^\`]*)\`/eval $1/gem;
-print $code;
+foreach (split("\n", $code)) {
+    s/\`([^\`]*)\`/eval $1/ge;
+
+    if ($flavour =~ /^cheri/) {
+	s/\(x([0-9]+)\)/(c$1)/ and s/\b([ls][bhwd]u?)\b/c$1/;
+	s/\b(PUSH|POP|cllc)(\s+)x([0-9]+)/$1$2c$3/ or
+	s/\b(ret|jal)\b/c$1/;
+	s/\bcaddi?\b/cincoffset/ and s/\bx([0-9]+,)/c$1/g or
+	m/\bcmove\b/ and s/\bx([0-9]+)/c$1/g;
+    } else {
+	s/\bcaddi?\b/add/ or
+	s/\bcmove\b/mv/ or
+	s/\bcllc\b/lla/;
+    }
+    print $_, "\n";
+}
+
 close STDOUT;
