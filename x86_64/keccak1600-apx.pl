@@ -47,10 +47,11 @@ $code.=<<___;
 .align	32
 __KeccakF1600:
 .cfi_startproc
-	sub	\$8,%rsp
-.cfi_alloca	8
+	sub	\$24,%rsp
+.cfi_alloca	24
 .cfi_end_prologue
-	lea	iotas(%rip),$iotas
+	lea	($iotas,%rax,8),%rax		# end of iotas
+	mov	%rax,8(%rsp)
 	jmp	.Loop
 
 .align	32
@@ -103,7 +104,7 @@ __KeccakF1600:
 	ror	\$63,$C[0]
 	xor	$C[0],$C[3]			# eor	$C[3],$C[3],$C[0],ror#63
 
-	xor	$C[2],$A[0][3],$C[0] 		# mov  $C[0],$A[0][3]
+	xor	$C[2],$A[0][3],$C[0] 		# mov	$C[0],$A[0][3]
 	xor	$C[2],$A[1][3]
 	xor	$C[2],$A[2][3]
 	xor	$C[2],$A[3][3]
@@ -112,7 +113,7 @@ __KeccakF1600:
 	ror	\$63,$C[1]
 	xor	$C[1],$C[4]			# eor	$C[4],$C[4],$C[1],ror#63
 
-	xor	$C[3],$A[0][4],$C[2] 		# mov  $C[2],$A[0][4]
+	xor	$C[3],$A[0][4],$C[2] 		# mov	$C[2],$A[0][4]
 	xor	$C[3],$A[1][4]
 	xor	$C[3],$A[2][4]
 	xor	$C[3],$A[3][4]
@@ -218,11 +219,11 @@ __KeccakF1600:
 	xor	$C[3],$A[4][4]
 	xor	$C[4],$A[4][2]
 
-	test	\$255,$iotas
+	cmp	8(%rsp),$iotas
 	jne	.Loop
 
-	add	\$8,%rsp
-.cfi_alloca	-8
+	add	\$24,%rsp
+.cfi_alloca	-24
 .cfi_epilogue
 	ret
 .cfi_endproc
@@ -281,6 +282,8 @@ KeccakF1600:
 	mov	8*9($C[0]),$A[4][4]
 
 	mov	$A_flat,(%rsp)
+	lea	iotas(%rip), $iotas
+	mov	\$24,%eax			# amound of rounds
 	call	__KeccakF1600
 	mov	(%rsp),$A_flat
 
@@ -423,6 +426,8 @@ $code.=<<___;
 	mov	$bsz,0(%rsp)			# save bsz
 	mov	$len,8(%rsp)			# save len
 	mov	$inp,16(%rsp)			# save inp
+	lea	iotas(%rip),$iotas
+	mov	\$24,%eax			# amound of rounds
 	call	__KeccakF1600
 	mov	0(%rsp),$bsz			# pull bsz
 	mov	8(%rsp),$len			# pull len
@@ -546,8 +551,7 @@ SHA3_squeeze:
 ___
 }
 $code.=<<___;
-.align	256
-	.quad	0,0,0,0,0,0,0,0
+.align	64
 .type	iotas,\@object
 iotas:
 	.quad	0x0000000000000001
