@@ -526,18 +526,18 @@ $code.=<<___;
 .globl	ChaCha20_ctr32_v
 .type	ChaCha20_ctr32_v,\@function
 ChaCha20_ctr32_v:
-	lla		$t0, sigma
+	cllc		$t0, sigma
 	vsetivli	$zero, 4, e32
 
 	vle32.v		v8, ($t0)	# a'
-	addi		$t1, $key, 16
+	caddi		$t1, $key, 16
 	vle32.v		v9, ($key)	# b'
 	vle32.v		v10, ($t1)	# c'
 	vle32.v		v11, ($counter)	# d'
 
-	addi		$t1, $t0, 16
-	addi		$t2, $t0, 32
-	addi		$t3, $t0, 48
+	caddi		$t1, $t0, 16
+	caddi		$t2, $t0, 32
+	caddi		$t3, $t0, 48
 	vle32.v		v12, ($t1)
 	vle32.v		v13, ($t2)
 	vle32.v		v14, ($t3)
@@ -559,15 +559,15 @@ ChaCha20_ctr32_v:
 ___
 	&HROUND(map("v$_", (0..3,4)));
 $code.=<<___;
+	vrgather.vv	v6, v3, v14	# d >>>= 96
 	vrgather.vv	v4, v1, v12	# b >>>= 32
 	vrgather.vv	v5, v2, v13	# c >>>= 64
-	vrgather.vv	v6, v3, v14	# d >>>= 96
 ___
 	&HROUND(map("v$_", (0,4..6,1)));
 $code.=<<___;
+	vrgather.vv	v3, v6, v12	# d >>>= 32
 	vrgather.vv	v1, v4, v14	# b >>>= 96
 	vrgather.vv	v2, v5, v13	# c >>>= 64
-	vrgather.vv	v3, v6, v12	# d >>>= 32
 
 	addi		$a5, $a5, -1
 	bnez		$a5, .Loop_v
@@ -633,7 +633,7 @@ $code.=<<___;
 	vxor.vv		v6, v6, v2
 	vmv.v.v		v0, v3
 	vse8.v		v6, ($out)
-	caddi	$out, $out, 16
+	caddi		$out, $out, 16
 
 .Last_v:
 	vsetvli		zero, $len, e8
@@ -656,12 +656,13 @@ ___
 foreach (split("\n", $code)) {
     if ($flavour =~ "cheri") {
 	s/\(x([0-9]+)\)/(c$1)/ and s/\b([ls][bhwd]u?)\b/c$1/;
-	s/\b(PUSH|POP)(\s+)x([0-9]+)/$1$2c$3/ or
+	s/\b(PUSH|POP|cllc)(\s+)x([0-9]+)/$1$2c$3/ or
 	s/\b(ret|jal)\b/c$1/;
 	s/\bcaddi?\b/cincoffset/ and s/\bx([0-9]+,)/c$1/g or
 	m/\bcmove\b/ and s/\bx([0-9]+)/c$1/g;
     } else {
 	s/\bcaddi?\b/add/ or
+	s/\bcllc\b/lla/ or
 	s/\bcmove\b/mv/;
     }
     print $_, "\n";
