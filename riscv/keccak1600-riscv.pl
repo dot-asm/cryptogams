@@ -13,7 +13,7 @@
 #
 # 24 cycles per byte processed with SHA3-256 on U74, ~50% faster than
 # compiler-generated code, extra 33%, 18 cbp on JH7110, U74 with zbb.
-# 19.4 cpb on C910.
+# 19.4 cpb on C910, 16.7 cbp on Spacemit X60.
 #
 # June 2024.
 #

@@ -13,6 +13,7 @@
 # 14.1 cycles per byte on U74 for aligned input, ~70% faster than
 # compiler-generated code. Misaligned input is processed in 16.4 cpb.
 # C910 processes one byte in 13.7 cycles. JH7110 (U74+zbb) - in 10.3.
+# Spacemit X60 - in 8.6.
 #
 # October 2023.
 #

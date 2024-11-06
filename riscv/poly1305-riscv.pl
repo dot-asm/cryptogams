@@ -12,8 +12,9 @@
 # module [without big-endian option].
 #
 # 3.9 cycles per byte on U74, ~60% faster than compiler-generated code.
-# 1.9 cpb on C910, ~75% improvement. 1.75 cpb on JH7110 (U74 with
-# apparently better multiplier), ~120% faster.
+# 1.9 cpb on C910, ~75% improvement. 2.3 cpb on JH7110 (U74 with
+# apparently better multiplier), ~69% faster, 3.3 on Spacemit X60,
+# ~69% improvement.
 #
 # June 2024.
 #

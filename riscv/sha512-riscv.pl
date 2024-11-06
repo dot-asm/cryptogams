@@ -7,7 +7,7 @@
 # This is transliteration of the corresponding MIPS module. Just like
 # the original SHA512 is supported only in 64-bit build. U74 spends
 # 36.5/25.0 cycles per one byte processed with SHA256/SHA512, C910 -
-# 27.3/18.0, JH7110 (U74+zbb) - 21.3/14.9.
+# 27.3/18.0, JH7110 (U74+zbb) - 21.3/14.9, Spacemit X60 - 20.3/13.8.
 #
 # June 2024.
 #
