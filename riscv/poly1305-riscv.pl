@@ -335,6 +335,7 @@ $code.=<<___;
 #  define POP	lw
 # endif
 # define MULX(hi,lo,a,b)	mulhu hi,a,b; mul lo,a,b
+# define srliw	srli
 # define srlw	srl
 # define sllw	sll
 # define addw	add
@@ -496,7 +497,7 @@ poly1305_blocks:
 
 .Laligned_inp:
 #endif
-	srli	$t3,$h4,2		# modulo-scheduled reduction
+	srliw	$t3,$h4,2		# modulo-scheduled reduction
 	andi	$t4,$h4,-4
 	andi	$h4,$h4,3
 
@@ -680,7 +681,7 @@ poly1305_emit:
 	lw	$tmp2,8($ctx)
 	lw	$tmp3,12($ctx)
 
-	srli	$ctx,$tmp4,2		# final reduction
+	srliw	$ctx,$tmp4,2		# final reduction
 	andi	$in0,$tmp4,-4
 	andi	$tmp4,$tmp4,3
 	addw	$ctx,$ctx,$in0
