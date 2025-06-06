@@ -60,6 +60,9 @@ $code.=<<___;
 .globl	poly1305_init
 .type	poly1305_init,\@function
 poly1305_init:
+#ifdef	__riscv_zicfilp
+	lpad	0
+#endif
 	sd	$zero,0($ctx)
 	sd	$zero,8($ctx)
 	sd	$zero,16($ctx)
@@ -117,6 +120,9 @@ $code.=<<___;
 .globl	poly1305_blocks
 .type	poly1305_blocks,\@function
 poly1305_blocks:
+#ifdef	__riscv_zicfilp
+	lpad	0
+#endif
 	andi	$len,$len,-16		# complete blocks only
 	beqz	$len,.Lno_data
 
@@ -235,6 +241,9 @@ $code.=<<___;
 .globl	poly1305_emit
 .type	poly1305_emit,\@function
 poly1305_emit:
+#ifdef	__riscv_zicfilp
+	lpad	0
+#endif
 	ld	$tmp2,16($ctx)
 	ld	$tmp0,0($ctx)
 	ld	$tmp1,8($ctx)
@@ -360,6 +369,9 @@ $code.=<<___;
 .globl	poly1305_init
 .type	poly1305_init,\@function
 poly1305_init:
+#ifdef	__riscv_zicfilp
+	lpad	0
+#endif
 	sw	$zero,0($ctx)
 	sw	$zero,4($ctx)
 	sw	$zero,8($ctx)
@@ -435,6 +447,9 @@ $code.=<<___;
 .globl	poly1305_blocks
 .type	poly1305_blocks,\@function
 poly1305_blocks:
+#ifdef	__riscv_zicfilp
+	lpad	0
+#endif
 	andi	$len,$len,-16		# complete blocks only
 	beqz	$len,.Labort
 
@@ -675,6 +690,9 @@ $code.=<<___;
 .globl	poly1305_emit
 .type	poly1305_emit,\@function
 poly1305_emit:
+#ifdef	__riscv_zicfilp
+	lpad	0
+#endif
 	lw	$tmp4,16($ctx)
 	lw	$tmp0,0($ctx)
 	lw	$tmp1,4($ctx)

@@ -34,6 +34,9 @@ $code=<<___;
 .type	ct_umull, \@function
 .align	4
 ct_umull:
+#ifdef	__riscv_zicfilp
+	lpad	0
+#endif
 ___
 $code.=<<___	if ($flavour =~ /64/);
 #ifdef	__riscv_mul

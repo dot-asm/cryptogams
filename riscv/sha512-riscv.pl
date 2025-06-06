@@ -250,6 +250,9 @@ $code.=<<___;
 .globl	sha${label}_block_data_order
 .type	sha${label}_block_data_order,\@function
 sha${label}_block_data_order:
+#ifdef	__riscv_zicfilp
+	lpad	0
+#endif
 	caddi	$sp,$sp,-FRAMESIZE
 	PUSH	$s0,FRAMESIZE-1*__SIZEOF_POINTER__($sp)
 	PUSH	$s1,FRAMESIZE-2*__SIZEOF_POINTER__($sp)

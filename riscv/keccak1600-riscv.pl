@@ -633,6 +633,9 @@ __load_n_xor:
 .globl	SHA3_absorb
 .type	SHA3_absorb, \@function
 SHA3_absorb:
+#ifdef	__riscv_zicfilp
+	lpad	0
+#endif
 	bltu	$a2, $a3, .Labsorb_abort
 
 	caddi	$sp, $sp, -__SIZEOF_POINTER__*20
@@ -859,6 +862,9 @@ $code.=<<___;
 .globl	SHA3_squeeze
 .type	SHA3_squeeze, \@function
 SHA3_squeeze:
+#ifdef	__riscv_zicfilp
+	lpad	0
+#endif
 	caddi	$sp, $sp, -__SIZEOF_POINTER__*6
 
 	PUSH	$ra, __SIZEOF_POINTER__*5($sp)
@@ -1797,6 +1803,9 @@ $code.=<<___;
 .globl	SHA3_absorb
 .type	SHA3_absorb, \@function
 SHA3_absorb:
+#ifdef	__riscv_zicfilp
+	lpad	0
+#endif
 	caddi	$sp,  $sp, -__SIZEOF_POINTER__*20
 	bltu	$len, $bsz, .Labsorb_abort	# len < bsz?
 	PUSH	$ra,  __SIZEOF_POINTER__*19($sp)
@@ -2043,6 +2052,9 @@ $code.=<<___;
 .align	5
 .type	SHA3_squeeze, \@function
 SHA3_squeeze:
+#ifdef	__riscv_zicfilp
+	lpad	0
+#endif
 	caddi	$sp,  $sp, -__SIZEOF_POINTER__*16
 	PUSH	$ra,  __SIZEOF_POINTER__*15($sp)
 	PUSH	$s0,  __SIZEOF_POINTER__*14($sp)

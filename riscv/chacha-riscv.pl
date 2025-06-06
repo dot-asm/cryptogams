@@ -254,6 +254,9 @@ $code.=<<___;
 .globl	ChaCha20_ctr32
 .type	ChaCha20_ctr32,\@function
 ChaCha20_ctr32:
+#ifdef	__riscv_zicfilp
+	lpad		0
+#endif
 	caddi		$sp,$sp,-FRAMESIZE
 	PUSH		$ra, (FRAMESIZE-1*__SIZEOF_POINTER__)($sp)
 	PUSH		$s0, (FRAMESIZE-2*__SIZEOF_POINTER__)($sp)
@@ -526,6 +529,9 @@ $code.=<<___;
 .globl	ChaCha20_ctr32_v
 .type	ChaCha20_ctr32_v,\@function
 ChaCha20_ctr32_v:
+#ifdef	__riscv_zicfilp
+	lpad		0
+#endif
 	cllc		$t0, sigma
 	vsetivli	$zero, 4, e32
 
