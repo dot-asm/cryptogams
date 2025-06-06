@@ -978,6 +978,7 @@ $code.=<<___;
 #  define POP	lw
 # endif
 # define srlw	srl
+# define sllw	sll
 # define rorw	ror
 #elif __riscv_xlen == 64
 # if __SIZEOF_POINTER__ == 16
