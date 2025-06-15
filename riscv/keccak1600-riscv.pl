@@ -62,6 +62,9 @@ $code.=<<___;
 #  define PUSH	sd
 #  define POP	ld
 # endif
+# if defined(__riscv_zbkb) && !defined(__riscv_zbb)
+#  define __riscv_zbb __riscv_zbkb
+# endif
 #else
 # error "unsupported __riscv_xlen"
 #endif
@@ -986,6 +989,9 @@ $code.=<<___;
 # define srlw	srl
 # define sllw	sll
 # define rorw	ror
+# if defined(__riscv_zbkb) && !defined(__riscv_zbb)
+#  define __riscv_zbb __riscv_zbkb
+# endif
 #elif __riscv_xlen == 64
 # if __SIZEOF_POINTER__ == 16
 #  define PUSH	csc
@@ -993,6 +999,12 @@ $code.=<<___;
 # else
 #  define PUSH	sd
 #  define POP	ld
+# endif
+# ifdef __riscv_zbkb
+#  ifndef __riscv_zbb
+#   define __riscv_zbb __riscv_zbkb
+#  endif
+#  undef __riscv_zbkb   // no zip/unzip on 64-bit processors
 # endif
 #else
 # error "unsupported __riscv_xlen"
@@ -1867,7 +1879,8 @@ SHA3_absorb:
 	PUSH	$t1, __SIZEOF_POINTER__*1($sp)
 	PUSH	$t2, __SIZEOF_POINTER__*0($sp)
 	cmove	$A_flat, $a0
-#ifdef	__riscv_zbb
+
+#if	defined(__riscv_zbb) && !defined(__riscv_zbkb)
 	lui	$s0, 0x55555
 	lui	$s1, 0x33333
 	lui	$s2, 0x0f0f1
@@ -1910,7 +1923,14 @@ SHA3_absorb:
 	lw	$s10, 0($A_flat)
 	lw	$s11, 4($A_flat)
 
-#ifdef	__riscv_zbb
+#if	defined(__riscv_zbkb)
+	unzip	$t0, $a4
+	unzip	$t1, $a5
+	pack	$a4, $t0, $t1
+	srli	$t0, $t0, 16
+	srli	$t1, $t1, 16
+	pack	$a5, $t0, $t1
+#elif	defined(__riscv_zbb)
 	and	$t0, $a4, $s0		# t0 = lo & 0x55555555;
 	 and	$t1, $a5, $s0		# t1 = hi & 0x55555555;
 	srlw	$ra, $t0, 1
@@ -1965,14 +1985,11 @@ SHA3_absorb:
 	srlw	$a4, $a4, 16		# lo >>= 16;
 	 and	$a5, $a5, $s8		# hi &= 0xffff0000;
 
-	xor	$s10, $s10, $t0		# absorb
-	xor	$s11, $s11, $a4
-	xor	$s10, $s10, $t1
-	xor	$s11, $s11, $a5
-#else
-	xor	$s10, $s10, $a4
-	xor	$s11, $s11, $a5
+	or	$a5, $a5, $a4
+	or	$a4, $t0, $t1
 #endif
+	xor	$s10, $s10, $a4		# absorb
+	xor	$s11, $s11, $a5
 
 	sw	$s10, 0($A_flat)
 	addi	$bsz, $bsz, -8
@@ -2073,7 +2090,7 @@ SHA3_squeeze:
 	PUSH	$bsz, __SIZEOF_POINTER__*2($sp)
 	cmove	$A_flat, $a0
 
-#ifdef	__riscv_zbb
+#if	defined(__riscv_zbb) && !defined(__riscv_zbkb)
 	lui	$s4, 0x55555
 	lui	$s5, 0x33333
 	lui	$s6, 0x0f0f1
@@ -2095,7 +2112,14 @@ SHA3_squeeze:
 	lw	$a5, 4($A_flat)
 	caddi	$A_flat, $A_flat, 8
 
-#ifdef	__riscv_zbb
+#if	defined(__riscv_zbkb)
+	pack	$t0, $a4, $a5
+	srli	$a4, $a4, 16
+	srli	$a5, $a5, 16
+	pack	$t1, $a4, $a5
+	zip	$a4, $t0
+	zip	$a5, $t1
+#elif	defined(__riscv_zbb)
 	and	$t0, $a4, $s3		# t0 = lo & 0x0000ffff;
 	 sllw	$t1, $a5, 16		# t1 = hi << 16;
 	sllw	$ra, $t0, 8
