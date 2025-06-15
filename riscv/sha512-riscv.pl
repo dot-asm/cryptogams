@@ -129,7 +129,20 @@ $code.=<<___	if ($i<15 && $SZ==8);
 	or	@X[1],@X[1],$tmp0
 ___
 $code.=<<___;
-#ifdef	__riscv_zbb
+#if	defined(__riscv_zknh)
+	xor	$tmp2,$f,$g			# $i
+	add	$T1,$X[0],$h
+	and	$tmp2,$tmp2,$e
+	sha${label}sum1	$tmp0, $e		# Sigma1(e)
+	xor	$tmp2,$tmp2,$g			# Ch(e,f,g)
+
+	add	$T1,$T1,$tmp2
+	$LD	$tmp2,`$i*$SZ`($Ktbl)		# K[$i]
+	sha${label}sum0	$h, $a			# Sigma0(a)
+	add	$T1,$T1,$tmp0
+	and	$tmp0,$b,$c
+	xor	$tmp1,$b,$c
+#elif	defined(__riscv_zbb)
 	xor	$tmp2,$f,$g			# $i
 	$ROTR	$tmp0,$e,@Sigma1[0]
 	add	$T1,$X[0],$h
@@ -202,7 +215,12 @@ my $i=@_[0];
 my ($tmp0,$tmp1,$tmp2,$tmp3)=(@X[4],@X[5],@X[6],@X[7]);
 
 $code.=<<___;
-#ifdef	__riscv_zbb
+#if	defined(__riscv_zknh)
+	add	@X[0],@X[0],@X[9]		# +=X[i+9]
+	sha${label}sig0	$tmp2, @X[1]		# sigma0(X[i+1])
+	add	@X[0],@X[0],$tmp2
+	sha${label}sig1	$tmp3,@X[14]		# sigma1(X[i+14])
+#elif	defined(__riscv_zbb)
 	$SRL	$tmp2,@X[1],@sigma0[0]		# Xupdate($i)
 	$ROTR	$tmp0,@X[1],@sigma0[1]
 	add	@X[0],@X[0],@X[9]		# +=X[i+9]
@@ -215,6 +233,7 @@ $code.=<<___;
 	$ROTR	$tmp0,@X[14],@sigma1[2]
 	xor	$tmp3,$tmp3,$tmp1
 	add	@X[0],@X[0],$tmp2
+	xor	$tmp3,$tmp3,$tmp0		# sigma1(X[i+14])
 #else
 	$SRL	$tmp2,@X[1],@sigma0[0]		# Xupdate($i)
 	add	@X[0],@X[0],@X[9]		# +=X[i+9]
@@ -236,8 +255,8 @@ $code.=<<___;
 	xor	$tmp3,$tmp3,$tmp0
 	$SRL	$tmp0,@X[14],@sigma1[2]
 	xor	$tmp3,$tmp3,$tmp1
-#endif
 	xor	$tmp3,$tmp3,$tmp0		# sigma1(X[i+14])
+#endif
 	add	@X[0],@X[0],$tmp3
 ___
 	&BODY_00_15(@_);
