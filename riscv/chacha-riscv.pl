@@ -187,6 +187,10 @@ $code.=<<___;
 #endif
 #define FRAMESIZE		(64+16*__SIZEOF_POINTER__)
 
+#if defined(__riscv_zbkb) && !defined(__riscv_zbb)
+# define __riscv_zbb __riscv_zbkb
+#endif
+
 .text
 .option	pic
 
@@ -500,32 +504,53 @@ my ($a, $b, $c, $d, $t) = @_;
 $code.=<<___
 	vadd.vv		$a, $a, $b	# a += b
 	vxor.vv		$d, $d, $a	# d ^= a
+#ifdef	__riscv_zvbb
+	vror.vi		$d, $d, 16
+#else
 	vsrl.vi		$t, $d, 16
 	vsll.vi		$d, $d, 16
 	vor.vv		$d, $d, $t	# d >>>= 16
+#endif
 
 	vadd.vv		$c, $c, $d	# c += d
 	vxor.vv		$b, $b, $c	# b ^= c
+#ifdef	__riscv_zvbb
+	vror.vi		$b, $b, 20
+#else
 	vsrl.vi		$t, $b, 20
 	vsll.vi		$b, $b, 12
 	vor.vv		$b, $b, $t	# b >>>= 20
+#endif
 
 	vadd.vv		$a, $a, $b	# a += b
 	vxor.vv		$d, $d, $a	# d ^= a
+#ifdef	__riscv_zvbb
+	vror.vi		$d, $d, 24
+#else
 	vsrl.vi		$t, $d, 24
 	vsll.vi		$d, $d, 8
 	vor.vv		$d, $d, $t	# d >>>= 24
+#endif
 
 	vadd.vv		$c, $c, $d	# c += d
 	vxor.vv		$b, $b, $c	# b ^= c
+#ifdef	__riscv_zvbb
+	vror.vi		$b, $b, 25
+#else
 	vsrl.vi		$t, $b, 25
 	vsll.vi		$b, $b, 7
 	vor.vv		$b, $b, $t	# b >>>= 25
+#endif
 ___
 }
 
 $code.=<<___;
 #if defined(__riscv_v) && __riscv_v >= 1000000
+
+#if defined(__riscv_zvkb) && !defined(__riscv_zvbb)
+# define __riscv_zvbb __riscv_zvkb
+#endif
+
 .globl	ChaCha20_ctr32_v
 .type	ChaCha20_ctr32_v,\@function
 ChaCha20_ctr32_v:
