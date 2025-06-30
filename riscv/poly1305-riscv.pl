@@ -34,6 +34,18 @@ $flavour = shift || "64";
 for (@ARGV) {   $output=$_ if (/\w[\w\-]*\.\w+$/);   }
 open STDOUT,">$output";
 
+$code.=<<___;
+#ifdef __KERNEL__
+# ifdef __riscv_zicfilp
+#  undef __riscv_zicfilp // calls are expected to be direct
+# endif
+#endif
+
+#if defined(__CHERI_PURE_CAPABILITY__) && !defined(__riscv_misaligned_fast)
+# define __riscv_misaligned_fast 1
+#endif
+___
+
 if ($flavour =~ /64/) {{{
 ######################################################################
 # 64-bit code path...
@@ -69,14 +81,14 @@ poly1305_init:
 
 	beqz	$inp,.Lno_key
 
-#ifndef	__CHERI_PURE_CAPABILITY__
+#ifndef	__riscv_misaligned_fast
 	andi	$tmp0,$inp,7		# $inp % 8
 	andi	$inp,$inp,-8		# align $inp
 	slli	$tmp0,$tmp0,3		# byte to bit offset
 #endif
 	ld	$in0,0($inp)
 	ld	$in1,8($inp)
-#ifndef	__CHERI_PURE_CAPABILITY__
+#ifndef	__riscv_misaligned_fast
 	beqz	$tmp0,.Laligned_key
 
 	ld	$tmp2,16($inp)
@@ -132,7 +144,7 @@ poly1305_blocks:
 	PUSH	$s2,1*__SIZEOF_POINTER__($sp)
 	PUSH	$s3,0*__SIZEOF_POINTER__($sp)
 
-#ifndef	__CHERI_PURE_CAPABILITY__
+#ifndef	__riscv_misaligned_fast
 	andi	$shr,$inp,7
 	andi	$inp,$inp,-8		# align $inp
 	slli	$shr,$shr,3		# byte to bit offset
@@ -152,7 +164,7 @@ poly1305_blocks:
 .Loop:
 	ld	$in0,0($inp)		# load input
 	ld	$in1,8($inp)
-#ifndef	__CHERI_PURE_CAPABILITY__
+#ifndef	__riscv_misaligned_fast
 	beqz	$shr,.Laligned_inp
 
 	ld	$tmp2,16($inp)
@@ -380,7 +392,7 @@ poly1305_init:
 
 	beqz	$inp,.Lno_key
 
-#ifndef	__CHERI_PURE_CAPABILITY__
+#ifndef	__riscv_misaligned_fast
 	andi	$tmp0,$inp,3		# $inp % 4
 	sub	$inp,$inp,$tmp0		# align $inp
 	sll	$tmp0,$tmp0,3		# byte to bit offset
@@ -389,7 +401,7 @@ poly1305_init:
 	lw	$in1,4($inp)
 	lw	$in2,8($inp)
 	lw	$in3,12($inp)
-#ifndef	__CHERI_PURE_CAPABILITY__
+#ifndef	__riscv_misaligned_fast
 	beqz	$tmp0,.Laligned_key
 
 	lw	$tmp2,16($inp)
@@ -465,7 +477,7 @@ poly1305_blocks:
 	PUSH	$s7, __SIZEOF_POINTER__*3($sp)
 	PUSH	$s8, __SIZEOF_POINTER__*2($sp)
 
-#ifndef	__CHERI_PURE_CAPABILITY__
+#ifndef	__riscv_misaligned_fast
 	andi	$shr,$inp,3
 	andi	$inp,$inp,-4		# align $inp
 	slli	$shr,$shr,3		# byte to bit offset
@@ -492,7 +504,7 @@ poly1305_blocks:
 	lw	$d1,4($inp)
 	lw	$d2,8($inp)
 	lw	$d3,12($inp)
-#ifndef	__CHERI_PURE_CAPABILITY__
+#ifndef	__riscv_misaligned_fast
 	beqz	$shr,.Laligned_inp
 
 	lw	$t4,16($inp)
