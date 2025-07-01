@@ -21,10 +21,17 @@
 # can improve it further for longer inputs. But it makes no sense to
 # invest time prior vector-capable hardware appears, so that one can
 # make suitable choices. For now it's just a qemu exercise...
+# Spacemit X60 - 22.5 cpb.
 #
 # June 2024.
 #
 # Add CHERI support.
+#
+# July 2025.
+#
+# Add "vertical" vector implementation. It dynamically adapts to vlen
+# in attempt to maximize resource utilization. Spacemit X60 processes
+# one byte in 6.7 cycles.
 #
 ######################################################################
 #
@@ -264,6 +271,7 @@ ChaCha20_ctr32:
 	caddi		$sp,$sp,-FRAMESIZE
 	PUSH		$ra, (FRAMESIZE-1*__SIZEOF_POINTER__)($sp)
 	PUSH		$s0, (FRAMESIZE-2*__SIZEOF_POINTER__)($sp)
+.Lscalar_shortcut:
 	PUSH		$s1, (FRAMESIZE-3*__SIZEOF_POINTER__)($sp)
 	PUSH		$s2, (FRAMESIZE-4*__SIZEOF_POINTER__)($sp)
 	PUSH		$s3, (FRAMESIZE-5*__SIZEOF_POINTER__)($sp)
@@ -324,6 +332,7 @@ ChaCha20_ctr32:
 	andi		$ra,$ra,3		# both are aligned?
 	bnez		$at,.Ltail
 
+#ifndef	__riscv_misaligned_fast
 	beqz		$ra,.Loop_aligned
 
 .Loop_misaligned:
@@ -378,6 +387,7 @@ $code.=<<___;
 	beqz		@y[4],.Loop_misaligned
 
 	j		.Ltail
+#endif
 
 .Loop_aligned:
 	lw		@y[0],0($inp)
@@ -498,6 +508,7 @@ $code.=<<___;
 .size	ChaCha20_ctr32,.-ChaCha20_ctr32
 ___
 
+if (1) {{{
 sub HROUND {
 my ($a, $b, $c, $d, $t) = @_;
 
@@ -557,8 +568,14 @@ ChaCha20_ctr32_v:
 #ifdef	__riscv_zicfilp
 	lpad		0
 #endif
+	vsetivli	$t1, 31, e32	# $t1 reflects vlen
 	cllc		$t0, sigma
-	vsetivli	$zero, 4, e32
+	srli		$t2, $t1, 3
+	li		$t1, 4
+	neg		$t2, $t2
+	andi		$t2, $t2, 7	# lmul: m1, mf2, mf4 or mf8
+	or		$t2, $t2, 0x10	# sew: e32
+	vsetvl		$zero, $t1, $t2
 
 	vle32.v		v8, ($t0)	# a'
 	caddi		$t1, $key, 16
@@ -674,13 +691,414 @@ $code.=<<___;
 
 	ret
 .size	ChaCha20_ctr32_v,.-ChaCha20_ctr32_v
-#endif
 
 .section	.rodata
 .align	4
 sigma:
 .word	0x61707865, 0x3320646e, 0x79622d32, 0x6b206574
 .word	1,2,3,0,    2,3,0,1,    3,0,1,2,    0,0,0,0
+#endif
+___
+}}}
+
+if (1) {{{
+sub VROUND {
+my ($a0,$b0,$c0,$d0)=@_;
+my ($a1,$b1,$c1,$d1)=map(($_&~3)+(($_+1)&3),($a0,$b0,$c0,$d0));
+my ($a2,$b2,$c2,$d2)=map(($_&~3)+(($_+1)&3),($a1,$b1,$c1,$d1));
+my ($a3,$b3,$c3,$d3)=map(($_&~3)+(($_+1)&3),($a2,$b2,$c2,$d2));
+
+$code.=<<___;
+	vadd.vv		v$a0,v$a0,v$b0		# Q0
+	 vadd.vv	v$a1,v$a1,v$b1		# Q1
+	  vadd.vv	v$a2,v$a2,v$b2		# Q2
+	   vadd.vv	v$a3,v$a3,v$b3		# Q3
+	vxor.vv		v$d0,v$d0,v$a0
+	 vxor.vv	v$d1,v$d1,v$a1
+	  vxor.vv	v$d2,v$d2,v$a2
+	   vxor.vv	v$d3,v$d3,v$a3
+#ifdef	__riscv_zvbb
+	vror.vi		v$d0,v$d0,16
+	 vror.vi	v$d1,v$d1,16
+	  vror.vi	v$d2,v$d2,16
+	   vror.vi	v$d3,v$d3,16
+#else
+	vsrl.vi		v16,v$d0,16
+	 vsrl.vi	v17,v$d1,16
+	  vsrl.vi	v18,v$d2,16
+	   vsrl.vi	v19,v$d3,16
+	vsll.vi		v$d0,v$d0,16
+	 vsll.vi	v$d1,v$d1,16
+	  vsll.vi	v$d2,v$d2,16
+	   vsll.vi	v$d3,v$d3,16
+	vor.vv		v$d0,v$d0,v16
+	 vor.vv		v$d1,v$d1,v17
+	  vor.vv	v$d2,v$d2,v18
+	   vor.vv	v$d3,v$d3,v19
+#endif
+
+	vadd.vv		v$c0,v$c0,v$d0
+	 vadd.vv	v$c1,v$c1,v$d1
+	  vadd.vv	v$c2,v$c2,v$d2
+	   vadd.vv	v$c3,v$c3,v$d3
+	vxor.vv		v$b0,v$b0,v$c0
+	 vxor.vv	v$b1,v$b1,v$c1
+	  vxor.vv	v$b2,v$b2,v$c2
+	   vxor.vv	v$b3,v$b3,v$c3
+#ifdef	__riscv_zvbb
+	vror.vi		v$b0,v$b0,20
+	 vror.vi	v$b1,v$b1,20
+	  vror.vi	v$b2,v$b2,20
+	   vror.vi	v$b3,v$b3,20
+#else
+	vsrl.vi		v16,v$b0,20
+	 vsrl.vi	v17,v$b1,20
+	  vsrl.vi	v18,v$b2,20
+	   vsrl.vi	v19,v$b3,20
+	vsll.vi		v$b0,v$b0,12
+	 vsll.vi	v$b1,v$b1,12
+	  vsll.vi	v$b2,v$b2,12
+	   vsll.vi	v$b3,v$b3,12
+	vor.vv		v$b0,v$b0,v16
+	 vor.vv		v$b1,v$b1,v17
+	  vor.vv	v$b2,v$b2,v18
+	   vor.vv	v$b3,v$b3,v19
+#endif
+
+	vadd.vv		v$a0,v$a0,v$b0
+	 vadd.vv	v$a1,v$a1,v$b1
+	  vadd.vv	v$a2,v$a2,v$b2
+	   vadd.vv	v$a3,v$a3,v$b3
+	vxor.vv		v$d0,v$d0,v$a0
+	 vxor.vv	v$d1,v$d1,v$a1
+	  vxor.vv	v$d2,v$d2,v$a2
+	   vxor.vv	v$d3,v$d3,v$a3
+#ifdef	__riscv_zvbb
+	vror.vi		v$d0,v$d0,24
+	 vror.vi	v$d1,v$d1,24
+	  vror.vi	v$d2,v$d2,24
+	   vror.vi	v$d3,v$d3,24
+#else
+	vsrl.vi		v16,v$d0,24
+	 vsrl.vi	v17,v$d1,24
+	  vsrl.vi	v18,v$d2,24
+	   vsrl.vi	v19,v$d3,24
+	vsll.vi		v$d0,v$d0,8
+	 vsll.vi	v$d1,v$d1,8
+	  vsll.vi	v$d2,v$d2,8
+	   vsll.vi	v$d3,v$d3,8
+	vor.vv		v$d0,v$d0,v16
+	 vor.vv		v$d1,v$d1,v17
+	  vor.vv	v$d2,v$d2,v18
+	   vor.vv	v$d3,v$d3,v19
+#endif
+
+	vadd.vv		v$c0,v$c0,v$d0
+	 vadd.vv	v$c1,v$c1,v$d1
+	  vadd.vv	v$c2,v$c2,v$d2
+	   vadd.vv	v$c3,v$c3,v$d3
+	vxor.vv		v$b0,v$b0,v$c0
+	 vxor.vv	v$b1,v$b1,v$c1
+	  vxor.vv	v$b2,v$b2,v$c2
+	   vxor.vv	v$b3,v$b3,v$c3
+#ifdef	__riscv_zvbb
+	vror.vi		v$b0,v$b0,25
+	 vror.vi	v$b1,v$b1,25
+	  vror.vi	v$b2,v$b2,25
+	   vror.vi	v$b3,v$b3,25
+#else
+	vsrl.vi		v16,v$b0,25
+	 vsrl.vi	v17,v$b1,25
+	  vsrl.vi	v18,v$b2,25
+	   vsrl.vi	v19,v$b3,25
+	vsll.vi		v$b0,v$b0,7
+	 vsll.vi	v$b1,v$b1,7
+	  vsll.vi	v$b2,v$b2,7
+	   vsll.vi	v$b3,v$b3,7
+	vor.vv		v$b0,v$b0,v16
+	 vor.vv		v$b1,v$b1,v17
+	  vor.vv	v$b2,v$b2,v18
+	   vor.vv	v$b3,v$b3,v19
+#endif
+___
+}
+
+my @sigma = map("x$_",(15..17,31));
+my $vlen = $t5;
+
+$code.=<<___;
+#if defined(__riscv_v) && __riscv_v >= 1000000
+
+#if defined(__riscv_zvkb) && !defined(__riscv_zvbb)
+# define __riscv_zvbb __riscv_zvkb
+#endif
+
+.text
+
+.globl	ChaCha20_ctr32_vx
+.type	ChaCha20_ctr32_vx,\@function
+ChaCha20_ctr32_vx:
+#ifdef	__riscv_zicfilp
+	lpad		0
+#endif
+	caddi		$sp, $sp, -FRAMESIZE
+	PUSH		$ra, (FRAMESIZE-1*__SIZEOF_POINTER__)($sp)
+	PUSH		$s0, (FRAMESIZE-2*__SIZEOF_POINTER__)($sp)
+	cmove		$s0, $sp
+
+	li		$t0, 256
+	bleu		$len, $t0, .Lscalar_shortcut
+
+	li		$vlen, -1		# ask for "infinite" vlen
+	vsetvli		$vlen, $vlen, e32	# get actual vlen [in words]
+	sll		$vlen, $vlen, 2+4	# actual vlen in bytes times 16
+
+#ifdef	__CHERI_PURE_CAPABILITY__
+	neg		$t0, $vlen
+	cadd		$sp, $sp, $t0		# storage for transposition
+#else
+	sub		$sp, $sp, $vlen		# storage for transposition
+#endif
+	srl		$vlen, $vlen, 4		# actual vlen in bytes
+
+	lui		@sigma[0],0x61707+1	# compose sigma
+	lui		@sigma[1],0x33206
+	lui		@sigma[2],0x79622+1
+	lui		@sigma[3],0x6b206
+	addi		@sigma[0],@sigma[0],-0x79b
+	addi		@sigma[1],@sigma[1],0x46e
+	addi		@sigma[2],@sigma[2],-0x2ce
+	addi		@sigma[3],@sigma[3],0x574
+
+	lw		$t0, 4*0($key)		# load key
+	lw		$t1, 4*1($key)
+	lw		$t2, 4*2($key)
+	lw		$t3, 4*3($key)
+
+#ifdef	__riscv_zvbb
+	vmv.v.x		v16, @sigma[0]
+	vmv.v.x		v17, @sigma[1]
+	vmv.v.x		v18, @sigma[2]
+	vmv.v.x		v19, @sigma[3]
+#endif
+
+	vmv.v.x		v20, $t0
+	lw		$t0, 4*4($key)
+	vmv.v.x		v21, $t1
+	lw		$t1, 4*5($key)
+	vmv.v.x		v22, $t2
+	lw		$t2, 4*6($key)
+	vmv.v.x		v23, $t3
+	lw		$t3, 4*7($key)
+	vmv.v.x		v24, $t0
+	lw		$t0, 4*0($counter)	# load counter
+	vmv.v.x		v25, $t1
+	lw		$t1, 4*1($counter)
+	vmv.v.x		v26, $t2
+	lw		$t2, 4*2($counter)
+	vmv.v.x		v27, $t3
+	lw		$t3, 4*3($counter)
+	vmv.v.x		v28, $t0
+	vmv.v.x		v29, $t1
+	sw		$t1, 4*1($s0)		# in case we call the scalar version
+	vmv.v.x		v30, $t2
+	sw		$t2, 4*2($s0)
+	vmv.v.x		v31, $t3
+	sw		$t3, 4*3($s0)
+
+	vid.v		v12			# initial counter increment
+
+.Loop_outer_vx:
+	vmv.v.x		v0, @sigma[0]
+	vmv.v.x		v1, @sigma[1]
+	vmv.v.x		v2, @sigma[2]
+	vmv.v.x		v3, @sigma[3]
+	vmv.v.v		v4, v20
+	vmv.v.v		v5, v21
+	vmv.v.v		v6, v22
+	vmv.v.v		v7, v23
+	vmv.v.v		v8, v24
+	vmv.v.v		v9, v25
+	vmv.v.v		v10, v26
+	vmv.v.v		v11, v27
+	vadd.vv		v12, v12, v28		# advance the counter
+	vmv.v.v		v13, v29
+	vmv.v.v		v14, v30
+	vmv.v.v		v15, v31
+
+	vmv.v.v		v28, v12
+	li		$t0, 10
+.Loop_vx:
+	addi		$t0, $t0, -1
+___
+	&VROUND(0, 4, 8, 12);
+	&VROUND(0, 5, 10, 15);
+$code.=<<___;
+	bnez		$t0, .Loop_vx
+
+#ifndef	__riscv_zvbb
+	vmv.v.x		v16, @sigma[0]
+	vmv.v.x		v17, @sigma[1]
+	vmv.v.x		v18, @sigma[2]
+	vmv.v.x		v19, @sigma[3]
+#endif
+	vadd.vv		v0,  v0,  v16
+	vadd.vv		v1,  v1,  v17
+	vadd.vv		v2,  v2,  v18
+	vadd.vv		v3,  v3,  v19
+	vadd.vv		v4,  v4,  v20
+	vadd.vv		v5,  v5,  v21
+	vadd.vv		v6,  v6,  v22
+	vadd.vv		v7,  v7,  v23
+	vadd.vv		v8,  v8,  v24
+	vadd.vv		v9,  v9,  v25
+	vadd.vv		v10, v10, v26
+	vadd.vv		v11, v11, v27
+	vadd.vv		v12, v12, v28
+	vadd.vv		v13, v13, v29
+	vadd.vv		v14, v14, v30
+	vadd.vv		v15, v15, v31
+
+	cadd		$t0, $sp, $vlen
+	vse32.v		v0, ($sp)		# offload for transposition
+	cadd		$t1, $t0, $vlen
+	vse32.v		v1, ($t0)
+	cadd		$t0, $t1, $vlen
+	vse32.v		v2, ($t1)
+	cadd		$t1, $t0, $vlen
+	vse32.v		v3, ($t0)
+	cadd		$t0, $t1, $vlen
+	vse32.v		v4, ($t1)
+	cadd		$t1, $t0, $vlen
+	vse32.v		v5, ($t0)
+	cadd		$t0, $t1, $vlen
+	vse32.v		v6, ($t1)
+	cadd		$t1, $t0, $vlen
+	vse32.v		v7, ($t0)
+	cadd		$t0, $t1, $vlen
+	vse32.v		v8, ($t1)
+	cadd		$t1, $t0, $vlen
+	vse32.v		v9, ($t0)
+	cadd		$t0, $t1, $vlen
+	vse32.v		v10, ($t1)
+	cadd		$t1, $t0, $vlen
+	vse32.v		v11, ($t0)
+	cadd		$t0, $t1, $vlen
+	vse32.v		v12, ($t1)
+	cadd		$t1, $t0, $vlen
+	vse32.v		v13, ($t0)
+	cadd		$t0, $t1, $vlen
+	vse32.v		v14, ($t1)
+	vse32.v		v15, ($t0)
+
+	li		$counter, 0
+	sll		$t3, $vlen, 2
+	li		$t4, 64
+.Loop_xor_vx:
+	vsetivli	$zero, 4, e32
+	cadd		$t0, $sp, $counter
+	cadd		$t1, $t0, $t3
+	vlse32.v	v0, ($t0), $vlen
+	cadd		$t0, $t1, $t3
+	vlse32.v	v1, ($t1), $vlen
+	cadd		$t1, $t0, $t3
+	vlse32.v	v2, ($t0), $vlen
+	caddi		$t0, $inp, 16
+	vlse32.v	v3, ($t1), $vlen
+	caddi		$t1, $inp, 32
+	vsetivli	$zero, 16, e8
+	bltu		$len, $t4, .Ltail_vx
+
+	vle8.v		v4, ($inp)		# load 64 bytes of input
+	caddi		$t2, $inp, 48
+	vle8.v		v5, ($t0)
+	caddi		$inp, $inp, 64
+	vle8.v		v6, ($t1)
+	addi		$len, $len, -64
+	vle8.v		v7, ($t2)
+	addi		$counter, $counter, 4
+	vxor.vv		v0, v0, v4
+	vxor.vv		v1, v1, v5
+	caddi		$t0, $out, 16
+	vxor.vv		v2, v2, v6
+	caddi		$t1, $out, 32
+	vxor.vv		v3, v3, v7
+	caddi		$t2, $out, 48
+	vse8.v		v0, ($out)		# store 64 bytes of output
+	caddi		$out, $out, 64
+	vse8.v		v1, ($t0)
+	vse8.v		v2, ($t1)
+	vse8.v		v3, ($t2)
+	beqz		$len, .Ldone_vx
+
+	srl		$t0, $vlen, 2		# vlen in words
+	bltu		$counter, $vlen, .Loop_xor_vx
+
+	vsetvli		$zero, $t0, e32
+	li		$t1, 256
+	vmv.x.s		$t2, v28		# in case we call the scalar version
+	vmv.v.x		v12, $t0		# counter increment
+#if 0
+	bnez		$len, .Loop_outer_vx
+#else
+	bgtu		$len, $t1, .Loop_outer_vx
+
+	add		$t2, $t2, $t0		# advance the counter
+	cmove		$counter, $s0
+	cmove		$sp, $s0
+	sw		$t2, ($s0)
+	j		.Lscalar_shortcut
+#endif
+
+.Ltail_vx:
+	li		$t0, 16
+	bleu		$len, $t0, .Last_vx
+
+	vle8.v		v4, ($inp)
+	caddi		$inp, $inp, 16
+	addi		$len, $len, -16
+	vxor.vv		v4, v4, v0
+	vmv.v.v		v0, v1
+	vse8.v		v4, ($out)
+	caddi		$out, $out, 16
+	bleu		$len, $t0, .Last_vx
+
+	vle8.v		v5, ($inp)
+	caddi		$inp, $inp, 16
+	addi		$len, $len, -16
+	vxor.vv		v5, v5, v1
+	vmv.v.v		v0, v2
+	vse8.v		v5, ($out)
+	caddi		$out, $out, 16
+	bleu		$len, $t0, .Last_vx
+
+	vle8.v		v6, ($inp)
+	caddi		$inp, $inp, 16
+	addi		$len, $len, -16
+	vxor.vv		v6, v6, v2
+	vmv.v.v		v0, v3
+	vse8.v		v6, ($out)
+	caddi		$out, $out, 16
+
+.Last_vx:
+	vsetvli		$zero, $len, e8
+	vle8.v		v4, ($inp)
+	vxor.vv		v4, v4, v0
+	vse8.v		v4, ($out)
+
+.Ldone_vx:
+	cmove		$sp, $s0
+	POP		$s0, (FRAMESIZE-2*__SIZEOF_POINTER__)($s0)
+	caddi		$sp, $sp, FRAMESIZE
+	ret
+.size	ChaCha20_ctr32_vx,.-ChaCha20_ctr32_vx
+#endif
+___
+}}}
+
+$code.=<<___;
+.section	.rodata
+.align	3
 .string	"ChaCha20 for RISC-V, CRYPTOGAMS by \@dot-asm"
 ___
 
