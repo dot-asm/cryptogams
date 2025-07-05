@@ -20,8 +20,11 @@
 # Add a "teaser" vector implementation. It's a "teaser," because one
 # can improve it further for longer inputs. But it makes no sense to
 # invest time prior vector-capable hardware appears, so that one can
-# make suitable choices. For now it's just a qemu exercise...
-# Spacemit X60 - 22.5 cpb.
+# make suitable choices. Spacemit X60 processes one byte in 13.7
+# cycles. Next step is to interleave 3 blocks, but it won't improve
+# performance by 3x on X60. Hence below "vertical" implementation is
+# an adequate option for it. It remains to be seen how it looks on
+# other processors to draw the final conclusion...
 #
 # June 2024.
 #
@@ -555,6 +558,9 @@ $code.=<<___
 ___
 }
 
+my $vlen=$t6;
+my $MAX_WORDS=32;	# corresponds to 1024 bits
+
 $code.=<<___;
 #if defined(__riscv_v) && __riscv_v >= 1000000
 
@@ -568,36 +574,46 @@ ChaCha20_ctr32_v:
 #ifdef	__riscv_zicfilp
 	lpad		0
 #endif
-	vsetivli	$t1, 31, e32	# $t1 reflects vlen
+	vsetivli	$zero, 4, e32
 	cllc		$t0, sigma
-	srli		$t2, $t1, 3
-	li		$t1, 4
-	neg		$t2, $t2
-	andi		$t2, $t2, 7	# lmul: m1, mf2, mf4 or mf8
-	or		$t2, $t2, 0x10	# sew: e32
-	vsetvl		$zero, $t1, $t2
 
-	vle32.v		v8, ($t0)	# a'
 	caddi		$t1, $key, 16
-	vle32.v		v9, ($key)	# b'
-	vle32.v		v10, ($t1)	# c'
-	vle32.v		v11, ($counter)	# d'
+	vle32.v		v1, ($key)	# b'
+	vle32.v		v2, ($t1)	# c'
+	vle32.v		v3, ($counter)	# d'
 
-	caddi		$t1, $t0, 16
-	caddi		$t2, $t0, 32
-	caddi		$t3, $t0, 48
-	vle32.v		v12, ($t1)
-	vle32.v		v13, ($t2)
-	vle32.v		v14, ($t3)
-	vmv.x.s		$counter, v11	# put aside the 32-bit counter value
+	li		$vlen, $MAX_WORDS
+	vsetvli		$vlen, $vlen, e32
+
+	caddi		$t1, $t0, 1*$MAX_WORDS*4
+	vle32.v		v8, ($t0)	# full-width a'
+	caddi		$t2, $t0, 2*$MAX_WORDS*4
+	vle32.v		v12, ($t1)	# >>>32
+	caddi		$t3, $t0, 3*$MAX_WORDS*4
+	vle32.v		v13, ($t2)	# >>>64
+	caddi		$t4, $t0, 4*$MAX_WORDS*4
+	vle32.v		v14, ($t3)	# >>>96
+	vxor.vv		v15, v15, v15
+	vle32.v		v4, ($t4)	# 128-bit broadcast
+
+	lui		$t0, 0x11111
+	srli		$t1, $vlen, 2
+	addi		$t0, $t0, 0x111
+	vmv.v.x		v5, $t1
+	vid.v		v6
+	vmv.v.x		v0, $t0		# mask
+
+	vrgather.vv	v9,  v1, v4	# broadcast b'
+	vrgather.vv	v10, v2, v4	# broadcast c'
+	vrgather.vv	v11, v3, v4	# broadcast d'
+
+	vsrl.vi		v6, v6, 2
+	vor.vv		v15, v15, v5, v0.t
+	vadd.vv		v11, v11, v6, v0.t
+
 	li		$t0, 64
-	j		.Loop_enter_v
 
 .Loop_outer_v:
-	addi		$counter, $counter, 1
-	vsetivli	zero, 4, e32
-	vmv.s.x		v11, $counter	# d'
-.Loop_enter_v:
 	vmv.v.v		v0, v8		# a = a'
 	vmv.v.v		v1, v9		# b = b'
 	vmv.v.v		v2, v10		# c = c'
@@ -620,19 +636,25 @@ $code.=<<___;
 	addi		$a5, $a5, -1
 	bnez		$a5, .Loop_v
 
-	vadd.vv		v0, v0, v8	# a += a'
-	vadd.vv		v1, v1, v9	# b += b'
-	vadd.vv		v2, v2, v10	# c += c'
-	vadd.vv		v3, v3, v11	# d += d'
+	vadd.vv		v4, v0, v8	# a + a'
+	vadd.vv		v5, v1, v9	# b + b'
+	vadd.vv		v6, v2, v10	# c + c'
+	vadd.vv		v7, v3, v11	# d + d'
+	vadd.vv		v11, v11, v15	# advance the counter
 
+	li		$t4, 0
+.Loop_xor_v:
+	vslidedown.vx	v0, v4, $t4
+	vslidedown.vx	v1, v5, $t4
+	caddi		$t1, $inp, 16
+	vslidedown.vx	v2, v6, $t4
+	caddi		$t2, $inp, 32
+	vslidedown.vx	v3, v7, $t4
+	caddi		$t3, $inp, 48
 	vsetivli	zero, 16, e8
 	bltu		$len, $t0, .Ltail_v
 
-	caddi		$t1, $inp, 16
-	caddi		$t2, $inp, 32
-	caddi		$t3, $inp, 48
 	vle8.v		v4, ($inp)
-	caddi		$inp, $inp, 64
 	addi		$len, $len, -64
 	vle8.v		v5, ($t1)
 	caddi		$t1, $out, 16
@@ -644,13 +666,20 @@ $code.=<<___;
 	vxor.vv		v5, v5, v1
 	vxor.vv		v6, v6, v2
 	vxor.vv		v7, v7, v3
+	caddi		$inp, $inp, 64
 	vse8.v		v4, ($out)
 	caddi		$out, $out, 64
 	vse8.v		v5, ($t1)
 	vse8.v		v6, ($t2)
 	vse8.v		v7, ($t3)
+	addi		$t4, $t4, 4
+	beqz		$len, .Ldone_v
+	vsetvli		zero, $vlen, e32
+	bltu		$t4, $vlen, .Loop_xor_v
+
 	bnez		$len, .Loop_outer_v
 
+.Ldone_v:
 	ret
 
 .Ltail_v:
@@ -695,8 +724,37 @@ $code.=<<___;
 .section	.rodata
 .align	4
 sigma:
+___
+for (my $i=0; $i<$MAX_WORDS; $i+=4) {
+$code.=<<___;
 .word	0x61707865, 0x3320646e, 0x79622d32, 0x6b206574
-.word	1,2,3,0,    2,3,0,1,    3,0,1,2,    0,0,0,0
+___
+}
+# 128-bit >>>32
+for (my $i=0; $i<$MAX_WORDS; $i+=4) {
+$code.=<<___;
+.word	1+$i, 2+$i, 3+$i, 0+$i
+___
+}
+# 128-bit >>>64
+for (my $i=0; $i<$MAX_WORDS; $i+=4) {
+$code.=<<___;
+.word	2+$i, 3+$i, 0+$i, 1+$i
+___
+}
+# 128-bit >>>96
+for (my $i=0; $i<$MAX_WORDS; $i+=4) {
+$code.=<<___;
+.word	3+$i, 0+$i, 1+$i, 2+$i
+___
+}
+# 128-bit broadcast
+for (my $i=0; $i<$MAX_WORDS; $i+=4) {
+$code.=<<___;
+.word	0, 1, 2, 3
+___
+}
+$code.=<<___;
 #endif
 ___
 }}}
