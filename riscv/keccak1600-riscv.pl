@@ -11,9 +11,10 @@
 # This is transliteration of MIPS module [without big-endian option].
 # See keccak1600-mips.pl for details...
 #
-# 24 cycles per byte processed with SHA3-256 on U74, ~50% faster than
-# compiler-generated code, extra 33%, 18 cbp on JH7110, U74 with zbb.
-# 19.4 cpb on C910, 16.7 cbp on Spacemit X60.
+# 22 cycles per byte processed with SHA3-256 on U74, ~60% faster than
+# compiler-generated code, extra 35%, 16.2 cbp on JH7110, U74+zbb.
+# 18.0 cpb on C910, 14.5 cbp on Spacemit X60. These are for aligned
+# inputs.
 #
 # June 2024.
 #
@@ -74,12 +75,15 @@ $code.=<<___;
 
 .type	__KeccakF1600, \@function
 __KeccakF1600:
-	caddi	$sp, $sp, -8*12
+	caddi	$sp, $sp, -8*14
 	PUSH	$ra, $_ra($sp)
 
 	sd	$A[4][0], $F[0]($sp)
 	sd	$A[4][1], $F[1]($sp)
 	cllc	$ra, iotas			# iotas
+	slli	$t1, $t1, 3			# number of rounds times 8
+	add	$t1, $ra, $t1			# end of iotas
+	sd	$t1, $_ra+__SIZEOF_POINTER__($sp)
 
 .Loop:
 	 sd	$A[0][2], $E[2]($sp)		# offload A[0][*]
@@ -472,17 +476,17 @@ __KeccakF1600:
 	xor	$A[0][0], $A[0][0], $T[0]
 	xor	$A[0][1], $A[0][1], $T[1]
 #endif
+	ld	$T[0], $_ra+__SIZEOF_POINTER__($sp)
 	xor	$A[0][0], $A[0][0], $T[3]	# A[0][0] ^= iotas[i]
 
-	andi	$T[0], $ra, 0xff
-	bnez	$T[0], .Loop
+	bne	$ra, $T[0], .Loop
 
 	POP	$ra, $_ra($sp)
 
 	ld	$A[4][0], $F[0]($sp)
 	ld	$A[4][1], $F[1]($sp)
 
-	caddi	$sp, $sp, 8*12
+	caddi	$sp, $sp, 8*14
 	ret
 .size	__KeccakF1600, .-__KeccakF1600
 
@@ -506,6 +510,7 @@ KeccakF1600:
 
 	PUSH	$a0, 0($sp)
 	cmove	$ra, $a0
+	mv	$t1, $a1			# number of rounds
 
 	ld	$A[0][0], 0x00($a0)
 	ld	$A[0][1], 0x08($a0)
@@ -601,37 +606,39 @@ ___
 }
 {
 my ($inp,$len,$bsz) = ($A[4][2],$A[4][3],$A[4][4]);
-my @T = ($A[4][1],$len,$ra);
+my @T = ($A[4][1],$len,$t0,$ra);
 
 $code.=<<___;
+#ifndef	__riscv_misaligned_fast
 .type	__load_n_xor, \@function
 __load_n_xor:
 	lbu	$T[0], 0($inp)
 	lbu	$T[1], 1($inp)
-	xor	$A[4][0], $A[4][0], $T[0]
+	xor	$T[2], $T[2], $T[0]
 	lbu	$T[0], 2($inp)
 	sll	$T[1], $T[1], 8
-	xor	$A[4][0], $A[4][0], $T[1]
+	xor	$T[2], $T[2], $T[1]
 	lbu	$T[1], 3($inp)
 	sll	$T[0], $T[0], 16
-	xor	$A[4][0], $A[4][0], $T[0]
+	xor	$T[2], $T[2], $T[0]
 	lbu	$T[0], 4($inp)
 	sll	$T[1], $T[1], 24
-	xor	$A[4][0], $A[4][0], $T[1]
+	xor	$T[2], $T[2], $T[1]
 	lbu	$T[1], 5($inp)
 	sll	$T[0], $T[0], 32
-	xor	$A[4][0], $A[4][0], $T[0]
+	xor	$T[2], $T[2], $T[0]
 	lbu	$T[0], 6($inp)
 	sll	$T[1], $T[1], 40
-	xor	$A[4][0], $A[4][0], $T[1]
+	xor	$T[2], $T[2], $T[1]
 	lbu	$T[1], 7($inp)
 	sll	$T[0], $T[0], 48
-	xor	$A[4][0], $A[4][0], $T[0]
+	xor	$T[2], $T[2], $T[0]
 	sll	$T[1], $T[1], 56
-	xor	$A[4][0], $A[4][0], $T[1]
+	xor	$T[2], $T[2], $T[1]
 	caddi	$inp, $inp, 8
 	ret
 .size	__load_n_xor, .-__load_n_xor
+#endif
 
 .globl	SHA3_absorb
 .type	SHA3_absorb, \@function
@@ -698,89 +705,151 @@ SHA3_absorb:
 .Loop_absorb:
 	sub	$len, $len, $bsz
 	cadd	$ra,  $inp, $bsz		# pointer to next block
+	andi	$t0,  $inp, 7			# is input aligned?
 	sd	$len, __SIZEOF_POINTER__*2($sp)
 	PUSH	$ra,  __SIZEOF_POINTER__*1($sp)
 
-	sd	$A[4][0], 0xa0($t1)		# borrow even A[4][0]
+#ifndef	__riscv_misaligned_fast
+	beqz	$t0, .Labsorb_aligned
 
-	mv	$A[4][0], $A[0][0]
+	mv	$T[2], $A[0][0]
 	jal	__load_n_xor
-	mv	$A[0][0],$A[4][0]
-	mv	$A[4][0], $A[0][1]
+	mv	$A[0][0], $T[2]
+	mv	$T[2], $A[0][1]
 	jal	__load_n_xor
-	mv	$A[0][1],$A[4][0]
-	mv	$A[4][0], $A[0][2]
+	mv	$A[0][1], $T[2]
+	mv	$T[2], $A[0][2]
 	jal	__load_n_xor
-	mv	$A[0][2],$A[4][0]
-	mv	$A[4][0], $A[0][3]
+	mv	$A[0][2], $T[2]
+	mv	$T[2], $A[0][3]
 	jal	__load_n_xor
-	mv	$A[0][3],$A[4][0]
-	mv	$A[4][0], $A[0][4]
+	mv	$A[0][3], $T[2]
+	mv	$T[2], $A[0][4]
 	jal	__load_n_xor
-	mv	$A[0][4],$A[4][0]
-	mv	$A[4][0], $A[1][0]
+	mv	$A[0][4], $T[2]
+	mv	$T[2], $A[1][0]
 	jal	__load_n_xor
-	mv	$A[1][0],$A[4][0]
-	mv	$A[4][0], $A[1][1]
+	mv	$A[1][0], $T[2]
+	mv	$T[2], $A[1][1]
 	jal	__load_n_xor
-	mv	$A[1][1],$A[4][0]
-	mv	$A[4][0], $A[1][2]
+	mv	$A[1][1], $T[2]
+	mv	$T[2], $A[1][2]
 	jal	__load_n_xor
-	mv	$A[1][2],$A[4][0]
-	mv	$A[4][0], $A[1][3]
+	mv	$A[1][2], $T[2]
+	mv	$T[2], $A[1][3]
 	jal	__load_n_xor
 	li	$T[0], 72
-	mv	$A[1][3],$A[4][0]
-	beq	$bsz, $T[0], .Lprocess_block2
+	mv	$A[1][3], $T[2]
+	beq	$bsz, $T[0], .Lprocess_block
 
-	mv	$A[4][0], $A[1][4]
+	mv	$T[2], $A[1][4]
 	jal	__load_n_xor
-	mv	$A[1][4],$A[4][0]
-	mv	$A[4][0], $A[2][0]
+	mv	$A[1][4], $T[2]
+	mv	$T[2], $A[2][0]
 	jal	__load_n_xor
-	mv	$A[2][0],$A[4][0]
-	mv	$A[4][0], $A[2][1]
+	mv	$A[2][0], $T[2]
+	mv	$T[2], $A[2][1]
 	jal	__load_n_xor
-	mv	$A[2][1],$A[4][0]
-	mv	$A[4][0], $A[2][2]
+	mv	$A[2][1], $T[2]
+	mv	$T[2], $A[2][2]
 	jal	__load_n_xor
 	li	$T[0], 104
-	mv	$A[2][2],$A[4][0]
-	beq	$bsz, $T[0], .Lprocess_block2
+	mv	$A[2][2], $T[2]
+	beq	$bsz, $T[0], .Lprocess_block
 
-	mv	$A[4][0], $A[2][3]
+	mv	$T[2], $A[2][3]
 	jal	__load_n_xor
-	mv	$A[2][3],$A[4][0]
-	mv	$A[4][0], $A[2][4]
+	mv	$A[2][3], $T[2]
+	mv	$T[2], $A[2][4]
 	jal	__load_n_xor
-	mv	$A[2][4],$A[4][0]
-	mv	$A[4][0], $A[3][0]
+	mv	$A[2][4], $T[2]
+	mv	$T[2], $A[3][0]
 	jal	__load_n_xor
-	mv	$A[3][0],$A[4][0]
-	mv	$A[4][0], $A[3][1]
+	mv	$A[3][0], $T[2]
+	mv	$T[2], $A[3][1]
 	jal	__load_n_xor
 	li	$T[0], 136
-	mv	$A[3][1],$A[4][0]
-	beq	$bsz, $T[0], .Lprocess_block2
+	mv	$A[3][1], $T[2]
+	beq	$bsz, $T[0], .Lprocess_block
 
-	mv	$A[4][0], $A[3][2]
+	mv	$T[2], $A[3][2]
 	jal	__load_n_xor
 	li	$T[0], 144
-	mv	$A[3][2],$A[4][0]
-	beq	$bsz, $T[0], .Lprocess_block2
+	mv	$A[3][2], $T[2]
+	beq	$bsz, $T[0], .Lprocess_block
 
-	mv	$A[4][0], $A[3][3]
+	mv	$T[2], $A[3][3]
 	jal	__load_n_xor
-	mv	$A[3][3],$A[4][0]
-	mv	$A[4][0], $A[3][4]
+	mv	$A[3][3], $T[2]
+	mv	$T[2], $A[3][4]
 	jal	__load_n_xor
-	mv	$A[3][4],$A[4][0]
-	ld	$A[4][0], 0xa0($t1)
+	mv	$A[3][4], $T[2]
+	mv	$T[2], $A[4][0]
 	jal	__load_n_xor
+	mv	$A[4][0], $T[2]
 	j	.Lprocess_block
 
-.Lprocess_block2:
-	ld	$A[4][0], 0xa0($t1)
+.Labsorb_aligned:
+#endif
+	ld	$T[0], 8*0($inp)
+	ld	$T[1], 8*1($inp)
+	ld	$T[2], 8*2($inp)
+	ld	$T[3], 8*3($inp)
+	xor	$A[0][0], $A[0][0], $T[0]
+	ld	$T[0], 8*4($inp)
+	xor	$A[0][1], $A[0][1], $T[1]
+	ld	$T[1], 8*5($inp)
+	xor	$A[0][2], $A[0][2], $T[2]
+	ld	$T[2], 8*6($inp)
+	xor	$A[0][3], $A[0][3], $T[3]
+	ld	$T[3], 8*7($inp)
+	xor	$A[0][4], $A[0][4], $T[0]
+	ld	$T[0], 8*8($inp)
+	xor	$A[1][0], $A[1][0], $T[1]
+	li	$T[1], 72
+	xor	$A[1][1], $A[1][1], $T[2]
+	caddi	$inp, $inp, 8*9
+	xor	$A[1][2], $A[1][2], $T[3]
+	xor	$A[1][3], $A[1][3], $T[0]
+	beq	$bsz, $T[1], .Lprocess_block
+
+	ld	$T[0], 8*0($inp)
+	ld	$T[1], 8*1($inp)
+	ld	$T[2], 8*2($inp)
+	ld	$T[3], 8*3($inp)
+	caddi	$inp, $inp, 8*4
+	xor	$A[1][4], $A[1][4], $T[0]
+	li	$T[0], 104
+	xor	$A[2][0], $A[2][0], $T[1]
+	xor	$A[2][1], $A[2][1], $T[2]
+	xor	$A[2][2], $A[2][2], $T[3]
+	beq	$bsz, $T[0], .Lprocess_block
+
+	ld	$T[0], 8*0($inp)
+	ld	$T[1], 8*1($inp)
+	ld	$T[2], 8*2($inp)
+	ld	$T[3], 8*3($inp)
+	caddi	$inp, $inp, 8*4
+	xor	$A[2][3], $A[2][3], $T[0]
+	li	$T[0], 136
+	xor	$A[2][4], $A[2][4], $T[1]
+	xor	$A[3][0], $A[3][0], $T[2]
+	xor	$A[3][1], $A[3][1], $T[3]
+	beq	$bsz, $T[0], .Lprocess_block
+
+	ld	$T[0], 8*0($inp)
+	li	$T[1], 144
+	caddi	$inp, $inp, 8*1
+	xor	$A[3][2], $A[3][2], $T[0]
+	beq	$bsz, $T[1], .Lprocess_block
+
+	ld	$T[0], 8*0($inp)
+	ld	$T[1], 8*1($inp)
+	ld	$T[2], 8*2($inp)
+	caddi	$inp, $inp, 8*3
+	xor	$A[3][3], $A[3][3], $T[0]
+	xor	$A[3][4], $A[3][4], $T[1]
+	xor	$A[4][0], $A[4][0], $T[2]
 
 .Lprocess_block:
 	ld	$A[4][1], 0xa8($t1)
@@ -788,6 +857,7 @@ SHA3_absorb:
 	ld	$A[4][3], 0xb8($t1)
 	ld	$A[4][4], 0xc0($t1)
 
+	li	$t1, 24				# number of rounds
 	jal	__KeccakF1600
 
 	POP	$t1, __SIZEOF_POINTER__*0($sp)	# pull A[][]
@@ -910,6 +980,7 @@ SHA3_squeeze:
 	bnez	$a3, .Loop_squeeze
 
 	cmove	$a0, $A_flat
+	li	$a1, 24				# number of rounds
 	jal	KeccakF1600
 
 	cmove	$a0, $A_flat
@@ -936,9 +1007,7 @@ ___
 }
 $code.=<<___;
 .section	.rodata
-.align 8	# strategic alignment and padding that allows to use
-		# address value as loop termination condition...
-	.dword	0,0,0,0,0,0,0,0
+.align	6
 iotas:
 	.dword	0x0000000000000001
 	.dword	0x0000000000008082
@@ -976,6 +1045,7 @@ my @A = map([ 8*$_, 8*($_+1), 8*($_+2), 8*($_+3), 8*($_+4) ], (0,5,10,15,20));
 my @C = map("x$_", (12..21));
 my @D = map("x$_", (22..31));
 my @T = map("x$_", (6..9));
+my $iotas = "x5";
 
 $code.=<<___;
 #if __riscv_xlen == 32
@@ -1019,9 +1089,11 @@ __KeccakF1600:
 	caddi	$sp, $sp, -224
 
 	cmove	$a1, $sp
-	cllc	$t0, iotas
+	cllc	$iotas, iotas
 	lw	@D[0], $A[4][0]+0($a0)
+	slli	$t1, $t1, 3		# number of rounds times 8
 	lw	@D[1], $A[4][0]+4($a0)
+	cadd	$t1, $iotas, $t1	# end of iotas
 	lw	@D[2], $A[4][1]+0($a0)
 	lw	@D[3], $A[4][1]+4($a0)
 	lw	@D[4], $A[4][2]+0($a0)
@@ -1030,6 +1102,7 @@ __KeccakF1600:
 	lw	@D[7], $A[4][3]+4($a0)
 	lw	@D[8], $A[4][4]+0($a0)
 	lw	@D[9], $A[4][4]+4($a0)
+	PUSH	$t1, 208($sp)		# offload end of iotas
 
 .Loop:
 	lw	@C[0], $A[0][0]+0($a0)
@@ -1203,11 +1276,11 @@ __KeccakF1600:
 
 #ifdef	__riscv_zbb
 	rorw	@C[2], @C[2], 32-22
-	 lw	@T[2], 0($t0)		# *iotas++
+	 lw	@T[2], 0($iotas)	# *iotas++
 	rorw	@C[3], @C[3], 32-22
-	 lw	@T[3], 4($t0)
+	 lw	@T[3], 4($iotas)
 	rorw	@C[4], @C[4], 31-21
-	 cadd	$t0, $t0, 8
+	 caddi	$iotas, $iotas, 8
 	rorw	@C[5], @C[5], 32-21
 	rorw	@C[6], @C[6], 31-10
 	rorw	@C[7], @C[7], 32-10
@@ -1275,9 +1348,9 @@ __KeccakF1600:
 	or	@C[8], @T[1], @T[0]
 	or	@C[9], @T[3], @T[2]	# C[4] = ROL64(A[4][4], 14)
 
-	 lw	@T[2], 0($t0)		# *iotas++
-	 lw	@T[3], 4($t0)
-	 cadd	$t0, $t0, 8
+	 lw	@T[2], 0($iotas)	# *iotas++
+	 lw	@T[3], 4($iotas)
+	 caddi	$iotas, $iotas, 8
 
 	or	@T[0], @C[2], @C[4]
 	or	@T[1], @C[3], @C[5]
@@ -1750,6 +1823,8 @@ __KeccakF1600:
 	rorw	@C[8], @C[8], 32-1
 	rorw	@C[9], @C[9], 32-1
 
+	POP	@T[0], 208($sp)		# end of iotas
+
 	andn	@D[0], @C[4], @C[2]
 	andn	@D[1], @C[5], @C[3]
 	andn	@D[2], @C[6], @C[4]
@@ -1779,7 +1854,6 @@ __KeccakF1600:
 	sw	@D[7], $A[4][3]+4($a0)
 	xor	@D[9], @C[9], @C[1]
 	sw	@D[8], $A[4][4]+0($a0)	# R[4][4] = C[4] ^ (~C[0] & C[1]);
-	andi	@T[0], $t0, 0xff
 	sw	@D[9], $A[4][4]+4($a0)
 #else
 	sllw	@T[0], @C[1], 30
@@ -1817,6 +1891,8 @@ __KeccakF1600:
 	or	@C[8], @T[1], @T[0]
 	or	@C[9], @T[3], @T[2]	# C[4] = ROL64(A[4][1], 2)
 
+	POP	@T[0], 208($sp)		# end of iotas
+
 	not	@T[2], @C[2]
 	not	@T[3], @C[3]
 	and	@D[0], @T[2], @C[4]
@@ -1848,10 +1924,9 @@ __KeccakF1600:
 	sw	@D[7], $A[4][3]+4($a0)
 	xor	@D[9], @C[9], @C[1]
 	sw	@D[8], $A[4][4]+0($a0)	# R[4][4] =  C[4] ^ ( C[0] & C[1]);
-	andi	@T[0], $t0, 0xff
 	sw	@D[9], $A[4][4]+4($a0)
 #endif
-	bnez	@T[0], .Loop
+	bne	$iotas, @T[0], .Loop
 
 	caddi	$sp, $sp, 224
 	ret
@@ -1859,6 +1934,9 @@ __KeccakF1600:
 
 .type	KeccakF1600, \@function
 KeccakF1600:
+#ifdef	__riscv_zcmp
+	cm.push	{ra,s0-s11}, -64
+#else
 	caddi	$sp,  $sp, -__SIZEOF_POINTER__*16
 	PUSH	$ra,  __SIZEOF_POINTER__*15($sp)
 	PUSH	$s0,  __SIZEOF_POINTER__*14($sp)
@@ -1873,6 +1951,7 @@ KeccakF1600:
 	PUSH	$s9,  __SIZEOF_POINTER__*5($sp)
 	PUSH	$s10, __SIZEOF_POINTER__*4($sp)
 	PUSH	$s11, __SIZEOF_POINTER__*3($sp)
+#endif
 
 #ifndef	__riscv_zbb
 	lw	$s0, $A[0][1]+0($a0)
@@ -1913,6 +1992,7 @@ KeccakF1600:
 	sw	$a7, $A[4][0]+4($a0)
 #endif
 
+	mv	$t1, $a1		# number of rounds
 	jal	__KeccakF1600
 
 #ifndef	__riscv_zbb
@@ -1954,6 +2034,9 @@ KeccakF1600:
 	sw	$a7, $A[4][0]+4($a0)
 #endif
 
+#ifdef	__riscv_zcmp
+	cm.popret	{ra,s0-s11}, 64
+#else
 	POP	$ra,  __SIZEOF_POINTER__*15($sp)
 	POP	$s0,  __SIZEOF_POINTER__*14($sp)
 	POP	$s1,  __SIZEOF_POINTER__*13($sp)
@@ -1969,6 +2052,7 @@ KeccakF1600:
 	POP	$s11, __SIZEOF_POINTER__*3($sp)
 	caddi	$sp,  $sp, __SIZEOF_POINTER__*16
 	ret
+#endif
 .size	KeccakF1600, .-KeccakF1600
 ___
 {
@@ -1980,6 +2064,13 @@ SHA3_absorb:
 #ifdef	__riscv_zicfilp
 	lpad	0
 #endif
+#ifdef	__riscv_zcmp
+	bgeu	$len, $bsz, .Labsorb_proceed	# len >= bsz?
+	mv	$a0, $len			# return value
+	ret
+.Labsorb_proceed:
+	cm.push	{ra,s0-s11}, -80
+#else
 	caddi	$sp,  $sp, -__SIZEOF_POINTER__*20
 	bltu	$len, $bsz, .Labsorb_abort	# len < bsz?
 	PUSH	$ra,  __SIZEOF_POINTER__*19($sp)
@@ -1995,6 +2086,7 @@ SHA3_absorb:
 	PUSH	$s9,  __SIZEOF_POINTER__*9($sp)
 	PUSH	$s10, __SIZEOF_POINTER__*8($sp)
 	PUSH	$s11, __SIZEOF_POINTER__*7($sp)
+#endif
 
 #ifndef	__riscv_zbb
 	lw	$s0, $A[0][1]+0($a0)
@@ -2062,6 +2154,10 @@ SHA3_absorb:
 #endif
 
 .Loop_block:
+#ifdef	__riscv_misaligned_fast
+	lw	$a4, 0($inp)
+	lw	$a5, 4($inp)
+#else
 	lbu	$a4, 0($inp)
 	lbu	$a5, 4($inp)
 	lbu	$a6, 1($inp)
@@ -2082,6 +2178,7 @@ SHA3_absorb:
 	or	$a5, $a5, $t0
 	or	$a4, $a4, $t1
 	or	$a5, $a5, $t2
+#endif
 	caddi	$inp, $inp, 8
 
 	lw	$s10, 0($A_flat)
@@ -2161,6 +2258,7 @@ SHA3_absorb:
 	caddi	$A_flat, $A_flat, 8
 	bnez	$bsz, .Loop_block
 
+	li	$t1, 24			# number of rounds
 	jal	__KeccakF1600
 
 	POP	$bsz, __SIZEOF_POINTER__*2($sp)
@@ -2208,6 +2306,10 @@ SHA3_absorb:
 	sw	$a7, $A[4][0]+4($a0)
 #endif
 
+#ifdef	__riscv_zcmp
+	mv	$a0, $len		# return value
+	cm.popret	{ra,s0-s11}, 80
+#else
 	POP	$ra,  __SIZEOF_POINTER__*19($sp)
 	POP	$s0,  __SIZEOF_POINTER__*18($sp)
 	POP	$s1,  __SIZEOF_POINTER__*17($sp)
@@ -2225,6 +2327,7 @@ SHA3_absorb:
 	mv	$a0, $len		# return value
 	caddi	$sp, $sp, __SIZEOF_POINTER__*20
 	ret
+#endif
 .size	SHA3_absorb, .-SHA3_absorb
 ___
 }
@@ -2238,6 +2341,9 @@ SHA3_squeeze:
 #ifdef	__riscv_zicfilp
 	lpad	0
 #endif
+#ifdef	__riscv_zcmp
+	cm.push	{ra,s0-s11}, -64
+#else
 	caddi	$sp,  $sp, -__SIZEOF_POINTER__*16
 	PUSH	$ra,  __SIZEOF_POINTER__*15($sp)
 	PUSH	$s0,  __SIZEOF_POINTER__*14($sp)
@@ -2252,6 +2358,7 @@ SHA3_squeeze:
 	PUSH	$s9,  __SIZEOF_POINTER__*5($sp)
 	PUSH	$s10, __SIZEOF_POINTER__*4($sp)
 	PUSH	$s11, __SIZEOF_POINTER__*3($sp)
+#endif
 
 	PUSH	$bsz, __SIZEOF_POINTER__*2($sp)
 	cmove	$A_flat, $a0
@@ -2376,6 +2483,7 @@ SHA3_squeeze:
 	PUSH	$len, __SIZEOF_POINTER__*1($sp)
 	PUSH	$out, __SIZEOF_POINTER__*0($sp)
 
+	li	$a1, 24			# number of rounds
 	jal	KeccakF1600
 
 	POP	$out, __SIZEOF_POINTER__*0($sp)
@@ -2393,6 +2501,9 @@ SHA3_squeeze:
 	j	.Lsqueeze_tail
 
 .Lsqueeze_done:
+#ifdef	__riscv_zcmp
+	cm.popret	{ra,s0-s11}, 64
+#else
 	POP	$ra,  __SIZEOF_POINTER__*15($sp)
 	POP	$s0,  __SIZEOF_POINTER__*14($sp)
 	POP	$s1,  __SIZEOF_POINTER__*13($sp)
@@ -2408,14 +2519,13 @@ SHA3_squeeze:
 	POP	$s11, __SIZEOF_POINTER__*3($sp)
 	caddi	$sp,  $sp, __SIZEOF_POINTER__*16
 	ret
+#endif
 .size	SHA3_squeeze, .-SHA3_squeeze
 ___
 }
 $code.=<<___;
 .section	.rodata
-.align 8	# strategic alignment and padding that allows to use
-		# address value as loop termination condition...
-	.word	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+.align 6
 iotas:
 #ifdef	__riscv_zbb
 	.word	0x00000001, 0x00000000
