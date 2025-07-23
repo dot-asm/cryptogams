@@ -11,10 +11,9 @@
 # In the essence it's pretty straightforward transliteration of MIPS
 # module [without big-endian option].
 #
-# 3.9 cycles per byte on U74, ~60% faster than compiler-generated code.
-# 1.9 cpb on C910, ~75% improvement. 2.3 cpb on JH7110 (U74 with
-# apparently better multiplier), ~69% faster, 3.3 on Spacemit X60,
-# ~69% improvement.
+# 1.8 cycles per byte on U74, >100% faster than compiler-generated
+# code. 1.9 cpb on C910, ~75% improvement. 3.3 on Spacemit X60, ~69%
+# improvement.
 #
 # June 2024.
 #
@@ -300,6 +299,10 @@ poly1305_emit:
 	sltu	$tmp0,$in0,$tmp0
 	add	$in1,$in1,$tmp0
 
+#ifdef	__riscv_misaligned_fast
+	sd	$in0,0($mac)		# write mac value
+	sd	$in1,8($mac)
+#else
 	srli	$tmp0,$in0,8		# write mac value
 	srli	$tmp1,$in0,16
 	srli	$tmp2,$in0,24
@@ -331,6 +334,7 @@ poly1305_emit:
 	sb	$tmp3,13($mac)
 	sb	$tmp0,14($mac)
 	sb	$tmp1,15($mac)
+#endif
 
 	ret
 .size	poly1305_emit,.-poly1305_emit
@@ -465,6 +469,9 @@ poly1305_blocks:
 	andi	$len,$len,-16		# complete blocks only
 	beqz	$len,.Labort
 
+#ifdef	__riscv_zcmp
+	cm.push	{ra,s0-s8}, -48
+#else
 	caddi	$sp,$sp,-__SIZEOF_POINTER__*12
 	PUSH	$ra, __SIZEOF_POINTER__*11($sp)
 	PUSH	$s0, __SIZEOF_POINTER__*10($sp)
@@ -476,6 +483,7 @@ poly1305_blocks:
 	PUSH	$s6, __SIZEOF_POINTER__*4($sp)
 	PUSH	$s7, __SIZEOF_POINTER__*3($sp)
 	PUSH	$s8, __SIZEOF_POINTER__*2($sp)
+#endif
 
 #ifndef	__riscv_misaligned_fast
 	andi	$shr,$inp,3
@@ -679,6 +687,9 @@ poly1305_blocks:
 	sw	$h3,12($ctx)
 	sw	$h4,16($ctx)
 
+#ifdef	__riscv_zcmp
+	cm.popret	{ra,s0-s8}, 48
+#else
 	POP	$ra, __SIZEOF_POINTER__*11($sp)
 	POP	$s0, __SIZEOF_POINTER__*10($sp)
 	POP	$s1, __SIZEOF_POINTER__*9($sp)
@@ -690,6 +701,7 @@ poly1305_blocks:
 	POP	$s7, __SIZEOF_POINTER__*3($sp)
 	POP	$s8, __SIZEOF_POINTER__*2($sp)
 	caddi	$sp,$sp,__SIZEOF_POINTER__*12
+#endif
 .Labort:
 	ret
 .size	poly1305_blocks,.-poly1305_blocks
@@ -774,6 +786,12 @@ poly1305_emit:
 	addw	$in3,$in3,$tmp3
 	addw	$in3,$in3,$ctx
 
+#ifdef	__riscv_misaligned_fast
+	sw	$in0,0($mac)		# write mac value
+	sw	$in1,4($mac)
+	sw	$in2,8($mac)
+	sw	$in3,12($mac)
+#else
 	srl	$tmp0,$in0,8		# write mac value
 	srl	$tmp1,$in0,16
 	srl	$tmp2,$in0,24
@@ -802,6 +820,7 @@ poly1305_emit:
 	sb	$tmp0,13($mac)
 	sb	$tmp1,14($mac)
 	sb	$tmp2,15($mac)
+#endif
 
 	ret
 .size	poly1305_emit,.-poly1305_emit
