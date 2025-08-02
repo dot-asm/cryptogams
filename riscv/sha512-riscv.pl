@@ -268,6 +268,7 @@ $code.=<<___;
 
 .globl	sha${label}_block_data_order
 .type	sha${label}_block_data_order,\@function
+.align	2
 sha${label}_block_data_order:
 #ifdef	__riscv_zicfilp
 	lpad	0

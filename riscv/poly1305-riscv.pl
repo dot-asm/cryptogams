@@ -76,6 +76,7 @@ $code.=<<___;
 
 .globl	poly1305_init
 .type	poly1305_init,\@function
+.align	2
 poly1305_init:
 #ifdef	__riscv_zicfilp
 	lpad	0
@@ -139,6 +140,7 @@ my ($shr,$shl) = ($t5,$t6);		# used on R6
 $code.=<<___;
 .globl	poly1305_blocks
 .type	poly1305_blocks,\@function
+.align	2
 poly1305_blocks:
 #ifdef	__riscv_zicfilp
 	lpad	0
@@ -260,6 +262,7 @@ my ($ctx,$mac,$nonce) = ($a0,$a1,$a2);
 $code.=<<___;
 .globl	poly1305_emit
 .type	poly1305_emit,\@function
+.align	2
 poly1305_emit:
 #ifdef	__riscv_zicfilp
 	lpad	0
@@ -381,6 +384,7 @@ my ($r0,$r1,$r2) = ($a4,$a5,$a6);
 $code.=<<___;
 #if defined(__riscv_v) && __riscv_v >= 1000000
 .type	poly1305_sqr_2_44,\@function
+.align	2
 poly1305_sqr_2_44:
 	li	$t2, 20
 	slli	$t3, $r1, 1		# r1*2
@@ -454,6 +458,7 @@ poly1305_sqr_2_44:
 .size	poly1305_sqr_2_44,.-poly1305_sqr_2_44
 
 .type	poly1305_sw_2_26,\@function
+.align	2
 poly1305_sw_2_26:
 	srli	$t3, $mask, 18		# 2^26-1
 	and	$s0, $r0, $t3
@@ -478,6 +483,7 @@ poly1305_sw_2_26:
 .size	poly1305_sw_2_26,.-poly1305_sw_2_26
 
 .type	poly1305_lw_2_26,\@function
+.align	2
 poly1305_lw_2_26:
 	lw	$s0, 0*28($s8)
 	lw	$s1, 1*28($s8)
@@ -503,6 +509,7 @@ poly1305_lw_2_26:
 
 .globl	poly1305_blocks_vx
 .type	poly1305_blocks_vx,\@function
+.align	2
 poly1305_blocks_vx:
 #ifdef	__riscv_zicfilp
 	lpad	0
@@ -1117,6 +1124,7 @@ poly1305_blocks_vx:
 .size	poly1305_blocks_vx,.-poly1305_blocks_vx
 
 .type	poly1305_lazy_redc_vx,\@function
+.align	2
 poly1305_lazy_redc_vx:
 	################################################################
 	# lazy reduction as discussed in "NEON crypto" by D.J. Bernstein
@@ -1215,6 +1223,7 @@ $code.=<<___;
 .globl	poly1305_init
 .type	poly1305_init,\@function
 poly1305_init:
+.align	2
 #ifdef	__riscv_zicfilp
 	lpad	0
 #endif
@@ -1293,6 +1302,7 @@ $code.=<<___;
 .globl	poly1305_blocks
 .type	poly1305_blocks,\@function
 poly1305_blocks:
+.align	2
 #ifdef	__riscv_zicfilp
 	lpad	0
 #endif
@@ -1543,6 +1553,7 @@ my ($ctx,$mac,$nonce,$tmp4) = ($a0,$a1,$a2,$a3);
 $code.=<<___;
 .globl	poly1305_emit
 .type	poly1305_emit,\@function
+.align	2
 poly1305_emit:
 #ifdef	__riscv_zicfilp
 	lpad	0

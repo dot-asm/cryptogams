@@ -74,6 +74,7 @@ $code.=<<___;
 .option	pic
 
 .type	__KeccakF1600, \@function
+.align	2
 __KeccakF1600:
 	caddi	$sp, $sp, -8*14
 	PUSH	$ra, $_ra($sp)
@@ -491,6 +492,7 @@ __KeccakF1600:
 .size	__KeccakF1600, .-__KeccakF1600
 
 .type	KeccakF1600, \@function
+.align	2
 KeccakF1600:
 	caddi	$sp, $sp, -__SIZEOF_POINTER__*16
 
@@ -611,6 +613,7 @@ my @T = ($A[4][1],$len,$t0,$ra);
 $code.=<<___;
 #ifndef	__riscv_misaligned_fast
 .type	__load_n_xor, \@function
+.align	2
 __load_n_xor:
 	lbu	$T[0], 0($inp)
 	lbu	$T[1], 1($inp)
@@ -642,6 +645,7 @@ __load_n_xor:
 
 .globl	SHA3_absorb
 .type	SHA3_absorb, \@function
+.align	2
 SHA3_absorb:
 #ifdef	__riscv_zicfilp
 	lpad	0
@@ -934,6 +938,7 @@ my ($A_flat, $out, $len, $bsz) = ($s0, $s1, $s2, $s3);
 $code.=<<___;
 .globl	SHA3_squeeze
 .type	SHA3_squeeze, \@function
+.align	2
 SHA3_squeeze:
 #ifdef	__riscv_zicfilp
 	lpad	0
@@ -1085,6 +1090,7 @@ $code.=<<___;
 .option	pic
 
 .type	__KeccakF1600, \@function
+.align	2
 __KeccakF1600:
 	caddi	$sp, $sp, -224
 
@@ -1933,6 +1939,7 @@ __KeccakF1600:
 .size	__KeccakF1600, .-__KeccakF1600
 
 .type	KeccakF1600, \@function
+.align	2
 KeccakF1600:
 #ifdef	__riscv_zcmp
 	cm.push	{ra,s0-s11}, -64
@@ -2060,6 +2067,7 @@ my ($A_flat, $inp, $len, $bsz) = ($t6, $a1, $a2, $a3);
 $code.=<<___;
 .globl	SHA3_absorb
 .type	SHA3_absorb, \@function
+.align	2
 SHA3_absorb:
 #ifdef	__riscv_zicfilp
 	lpad	0
@@ -2338,6 +2346,7 @@ $code.=<<___;
 .align	5
 .type	SHA3_squeeze, \@function
 SHA3_squeeze:
+.align	2
 #ifdef	__riscv_zicfilp
 	lpad	0
 #endif

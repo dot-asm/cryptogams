@@ -205,6 +205,7 @@ $code.=<<___;
 .option	pic
 
 .type	__ChaCha,\@function
+.align	2
 __ChaCha:
 	lw		@x[0], 4*0($sp)
 	lw		@x[1], 4*1($sp)
@@ -267,6 +268,7 @@ $code.=<<___;
 
 .globl	ChaCha20_ctr32
 .type	ChaCha20_ctr32,\@function
+.align	2
 ChaCha20_ctr32:
 #ifdef	__riscv_zicfilp
 	lpad		0
@@ -570,6 +572,7 @@ $code.=<<___;
 
 .globl	ChaCha20_ctr32_v
 .type	ChaCha20_ctr32_v,\@function
+.align	2
 ChaCha20_ctr32_v:
 #ifdef	__riscv_zicfilp
 	lpad		0
@@ -895,6 +898,7 @@ $code.=<<___;
 
 .globl	ChaCha20_ctr32_vx
 .type	ChaCha20_ctr32_vx,\@function
+.align	2
 ChaCha20_ctr32_vx:
 #ifdef	__riscv_zicfilp
 	lpad		0
