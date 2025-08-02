@@ -477,6 +477,30 @@ poly1305_sw_2_26:
 	ret
 .size	poly1305_sw_2_26,.-poly1305_sw_2_26
 
+.type	poly1305_lw_2_26,\@function
+poly1305_lw_2_26:
+	lw	$s0, 0*28($s8)
+	lw	$s1, 1*28($s8)
+	lw	$s2, 2*28($s8)
+	lw	$s3, 3*28($s8)
+	lw	$s4, 4*28($s8)
+
+	slli	$s1, $s1, 26
+	slli	$s2, $s2, 8
+	slli	$s3, $s3, 34
+	add	$r0, $s0, $s1
+	add	$s3, $s3, $s2
+	srli	$r1, $r0, 44
+	and	$r0, $r0, $mask
+	add	$r1, $r1, $s3
+	slli	$s4, $s4, 16
+	srli	$r2, $r1, 44
+	and	$r1, $r1, $mask
+	add	$r2, $r2, $s4
+
+	ret
+.size	poly1305_lw_2_26,.-poly1305_lw_2_26
+
 .globl	poly1305_blocks_vx
 .type	poly1305_blocks_vx,\@function
 poly1305_blocks_vx:
@@ -484,11 +508,7 @@ poly1305_blocks_vx:
 	lpad	0
 #endif
 	andi	$len, $len, -16		# complete blocks only
-	li	$t0, 32			# the supported upper limit
-	vsetvli	$t0, $t0, e32, mf2	# actual vector 1/2 size in 32-bit words
-	slli	$t0, $t0, 4		# *16
-	slli	$t1, $t0, 1
-	add	$t2, $t1, $t0		# *3
+	li	$t2, 64*3
 	bltu	$len, $t2, poly1305_blocks
 
 	caddi	$sp, $sp, -16*__SIZEOF_POINTER__
@@ -504,9 +524,22 @@ poly1305_blocks_vx:
 	PUSH	$s8,  __SIZEOF_POINTER__*6($sp)
 	PUSH	$s9,  __SIZEOF_POINTER__*5($sp)
 	PUSH	$s10, __SIZEOF_POINTER__*4($sp)
-	neg	$t1, $t1
 	PUSH	$s11, __SIZEOF_POINTER__*3($sp)
-	cadd	$sp, $sp, $t1		# alignment buffer
+
+	li	$t0, 32			# the supported upper limit
+	vsetvli	$t0, $t0, e32, mf2	# actual vector 1/2 size in 32-bit words
+	slli	$t0, $t0, 4		# *16
+	slli	$t1, $t0, 1
+	add	$t2, $t1, $t0		# *3
+
+	sltu	$t3, $len, $t2		# downsize vlen if input is too short
+	srl	$t2, $t2,  $t3
+	srl	$t0, $t0,  $t3
+	sltu	$t3, $len, $t2
+	srl	$t2, $t2,  $t3
+	srl	$t0, $t0,  $t3
+	sltu	$t3, $len, $t2
+	srl	$t0, $t0,  $t3
 
 	srli	$vlen, $t0, 4
 	neg	$t1, $t0
@@ -524,8 +557,31 @@ poly1305_blocks_vx:
 	li	$mask, -1
 	srli	$mask, $mask, 20	# 2^44-1
 
-	bnez	$s8, .Lpwrs_precomputed
+	beqz	$s8, .Lno_pwrs
 
+	li	$t0, -7
+	sltiu	$t1, $vlen, 32
+	sltiu	$t2, $vlen, 16
+	 neg	$t3, $s8
+	add	$t0, $t0, $t1
+	sltiu	$t1, $vlen, 8
+	 srli	$t3, $t3, 2
+	add	$t0, $t0, $t2
+	sltiu	$t2, $vlen, 4
+	 addi	$t3, $t3, -1
+	add	$t0, $t0, $t1
+	add	$t0, $t0, $t2
+
+	mv	$t4, $s8
+	slli	$s8, $t0, 2
+	bge	$s8, $t4, .Lpwrs_precomputed
+
+	srl	$s7, $vlen, $t3
+	cadd	$s8, $pwrs, $t4
+	jal	poly1305_lw_2_26
+	j	.Loop_pwrs_sqr		# calculate missing powers
+
+.Lno_pwrs:
 	ld	$r0, 24($ctx)		# load the key
 	ld	$r1, 32($ctx)
 
@@ -543,7 +599,7 @@ poly1305_blocks_vx:
 	srli	$s7, $s7, 1
 	caddi	$s8, $s8, -4
 	jal	poly1305_sqr_2_44
-	jal	poly1305_sw_2_26	# key^2
+	jal	poly1305_sw_2_26	# key^2, key^4, key^8, ...
 	bnez	$s7, .Loop_pwrs_sqr
 
 	sub	$s8, $s8, $pwrs
@@ -599,13 +655,15 @@ poly1305_blocks_vx:
 	vmv.s.x		$H3, $s3
 	vmv.s.x		$H4, $s4
 
+	slli		$t0, $vlen, 5		# chunk size
 	ld		$r8_0, 0*28($pwrs)	# load two top-most powers
 	ld		$r8_1, 1*28($pwrs)
+	neg		$t1, $t0
 	ld		$r8_2, 2*28($pwrs)
 	ld		$r8_3, 3*28($pwrs)
 	ld		$r8_4, 4*28($pwrs)
 	caddi		$pwrs, $pwrs, 4
-	slli		$t0, $vlen, 5
+	cadd		$sp, $sp, $t1		# allocate alignment buffer
 	andi		$t1, $inp, 3
 	slli		$r8_1x5, $r8_1, 2
 	slli		$r8_2x5, $r8_2, 2
@@ -701,16 +759,16 @@ poly1305_blocks_vx:
 	vand.vx		$INhi_1, $INhi_1, $mask
 
 	################################################################
-	# ((inp[0]*r^8 + inp[4]*r^4 + inp[8]) *r^4 + inp[12])*r^4
-	# ((inp[1]*r^8 + inp[5]*r^4 + inp[9]) *r^4 + inp[13])*r^3
-	# ((inp[2]*r^8 + inp[6]*r^4 + inp[10])*r^4 + inp[14])*r^2
-	# ((inp[3]*r^8 + inp[7]*r^4 + inp[11])*r^4 + inp[15])*r
-	#   \_____________________/
-	# ((inp[0]*r^8 + inp[4]*r^4 + inp[8]) *r^8 + inp[12]*r^4 + inp[16])*r^4
-	# ((inp[1]*r^8 + inp[5]*r^4 + inp[9]) *r^8 + inp[13]*r^4 + inp[17])*r^3
-	# ((inp[2]*r^8 + inp[6]*r^4 + inp[10])*r^8 + inp[14]*r^4 + inp[18])*r^2
-	# ((inp[3]*r^8 + inp[7]*r^4 + inp[11])*r^8 + inp[15]*r^4 + inp[19])*r
-	#   \_____________________/ \__________________________/
+	# (((inp[0]*r^8 + inp[4]*r^4 + inp[8]) *r^4 + inp[12])*r^2 + )*r^2
+	# (((inp[1]*r^8 + inp[5]*r^4 + inp[9]) *r^4 + inp[13])*r^2 + )*r^1
+	# (((inp[2]*r^8 + inp[6]*r^4 + inp[10])*r^4 + inp[14]) ----^
+	# (((inp[3]*r^8 + inp[7]*r^4 + inp[11])*r^4 + inp[15]) ----^
+	#    \_____________________/
+	# (((inp[0]*r^8 + inp[4]*r^4 + inp[8]) *r^8 + inp[12]*r^4 + inp[16])*r^2 + )*r^2
+	# (((inp[1]*r^8 + inp[5]*r^4 + inp[9]) *r^8 + inp[13]*r^4 + inp[17])*r^2 + )*r
+	# (((inp[2]*r^8 + inp[6]*r^4 + inp[10])*r^8 + inp[14]*r^4 + inp[18]) ----^
+	# (((inp[3]*r^8 + inp[7]*r^4 + inp[11])*r^8 + inp[15]*r^4 + inp[19]) ----^
+	#    \_____________________/ \__________________________/
 	#
 	# Note that we start with inp[vlen:2*vlen]*r^4. This is because
 	# it doesn't depend on reduction in previous iteration, which
@@ -1020,7 +1078,7 @@ poly1305_blocks_vx:
 	vmv.x.s		$s3, $H3
 	vmv.x.s		$s4, $H4
 
-	cadd	$sp, $sp, $t0
+	cadd	$sp, $sp, $t0		# drop the alignment buffer
 
 	slli	$s1, $s1, 26		# convert the hash value to base 2^64
 	slli	$t0, $s2, 52
