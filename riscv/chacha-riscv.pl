@@ -989,7 +989,7 @@ ChaCha20_ctr32_vx:
 	li		$t0, 256
 #ifdef	__riscv_zbb
 	bleu		$len, $t0, ChaCha20_ctr32
-#endif
+#else
 	bleu		$len, $t0, ChaCha20_ctr32_v
 #endif
 	caddi		$sp, $sp, -FRAMESIZE
