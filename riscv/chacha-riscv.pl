@@ -20,7 +20,7 @@
 # Add a "teaser" vector implementation. It's a "teaser," because one
 # can improve it further for longer inputs. But it makes no sense to
 # invest time prior vector-capable hardware appears, so that one can
-# make suitable choices. Spacemit X60 processes one byte in 13.7
+# make suitable choices. Spacemit X60 processes one byte in 10.0
 # cycles. Next step is to interleave 3 blocks, but it won't improve
 # performance by 3x on X60. Hence below "vertical" implementation is
 # an adequate option for it. It remains to be seen how it looks on
@@ -560,8 +560,9 @@ $code.=<<___
 ___
 }
 
-my $vlen=$t6;
-my $MAX_WORDS=32;	# corresponds to 1024 bits
+my $vtype=$t5;
+my $vlenw=$t6;
+my $MAX_WORDS=64;	# corresponds to 1024x2 bits
 
 $code.=<<___;
 #if defined(__riscv_v) && __riscv_v >= 1000000
@@ -581,146 +582,174 @@ ChaCha20_ctr32_v:
 	cllc		$t0, sigma
 
 	caddi		$t1, $key, 16
-	vle32.v		v1, ($key)	# b'
-	vle32.v		v2, ($t1)	# c'
-	vle32.v		v3, ($counter)	# d'
+	vle32.v		v2, ($key)	# b'
+	vle32.v		v4, ($t1)	# c'
+	vle32.v		v6, ($counter)	# d'
 
-	li		$vlen, $MAX_WORDS
-	vsetvli		$vlen, $vlen, e32
+	li		$vlenw, $MAX_WORDS
+	li		$vtype, 0x11	# e32, m2
+#if 1
+	vsetvli		$a5, $vlenw, e32, m2
+
+	addi		$a6, $len, 63
+	andi		$a6, $a6, -64
+	addi		$a6, $a6, -1
+	srli		$a6, $a6, 3
+	sltu		$a7, $a6, $a5
+	srli		$a5, $a5, 1
+	sub		$vtype, $vtype, $a7
+	sltu		$a7, $a6, $a5
+	srli		$a5, $a5, 1
+	sub		$vtype, $vtype, $a7
+	sltu		$a7, $a6, $a5
+	srli		$a5, $a5, 1
+	sub		$vtype, $vtype, $a7
+	sltu		$a7, $a6, $a5
+	sub		$vtype, $vtype, $a7
+
+	andi		$vtype, $vtype, 7
+	ori		$vtype, $vtype, 0x10
+#endif
+	vsetvl		$vlenw, $vlenw, $vtype
 
 	caddi		$t1, $t0, 1*$MAX_WORDS*4
-	vle32.v		v8, ($t0)	# full-width a'
+	vle32.v		v16, ($t0)	# full-width a'
 	caddi		$t2, $t0, 2*$MAX_WORDS*4
-	vle32.v		v12, ($t1)	# >>>32
+	vle32.v		v24, ($t1)	# >>>32
 	caddi		$t3, $t0, 3*$MAX_WORDS*4
-	vle32.v		v13, ($t2)	# >>>64
+	vle32.v		v26, ($t2)	# >>>64
 	caddi		$t4, $t0, 4*$MAX_WORDS*4
-	vle32.v		v14, ($t3)	# >>>96
-	vxor.vv		v15, v15, v15
-	vle32.v		v4, ($t4)	# 128-bit broadcast
+	vle32.v		v28, ($t3)	# >>>96
+	vxor.vv		v30, v30, v30
+	vle32.v		v8, ($t4)	# 128-bit broadcast
 
 	lui		$t0, 0x11111
-	srli		$t1, $vlen, 2
+	srli		$t1, $vlenw, 2
 	addi		$t0, $t0, 0x111
-	vmv.v.x		v5, $t1
-	vid.v		v6
+	vmv.v.x		v10, $t1
+	vid.v		v12
 	vmv.v.x		v0, $t0		# mask
 
-	vrgather.vv	v9,  v1, v4	# broadcast b'
-	vrgather.vv	v10, v2, v4	# broadcast c'
-	vrgather.vv	v11, v3, v4	# broadcast d'
+	vrgather.vv	v18, v2, v8	# broadcast b'
+	vrgather.vv	v20, v4, v8	# broadcast c'
+	vrgather.vv	v22, v6, v8	# broadcast d'
 
-	vsrl.vi		v6, v6, 2
-	vor.vv		v15, v15, v5, v0.t
-	vadd.vv		v11, v11, v6, v0.t
+	vsrl.vi		v12, v12, 2
+	vor.vv		v30, v30, v10, v0.t
+	vadd.vv		v22, v22, v12, v0.t
 
 	li		$t0, 64
 
 .Loop_outer_v:
-	vmv.v.v		v0, v8		# a = a'
-	vmv.v.v		v1, v9		# b = b'
-	vmv.v.v		v2, v10		# c = c'
-	vmv.v.v		v3, v11		# d = d'
+	vmv.v.v		v0, v16		# a = a'
+	vmv.v.v		v2, v18		# b = b'
+	vmv.v.v		v4, v20		# c = c'
+	vmv.v.v		v6, v22		# d = d'
 	li		$a5, 10
 .Loop_v:
 ___
-	&HROUND(map("v$_", (0..3,4)));
+	&HROUND(map("v$_", (0,2,4,6,8)));
 $code.=<<___;
-	vrgather.vv	v6, v3, v14	# d >>>= 96
-	vrgather.vv	v4, v1, v12	# b >>>= 32
-	vrgather.vv	v5, v2, v13	# c >>>= 64
+	vrgather.vv	v12, v6, v28	# d >>>= 96
+	vrgather.vv	v8,  v2, v24	# b >>>= 32
+	vrgather.vv	v10, v4, v26	# c >>>= 64
 ___
-	&HROUND(map("v$_", (0,4..6,1)));
+	&HROUND(map("v$_", (0,8,10,12,2)));
 $code.=<<___;
-	vrgather.vv	v3, v6, v12	# d >>>= 32
-	vrgather.vv	v1, v4, v14	# b >>>= 96
-	vrgather.vv	v2, v5, v13	# c >>>= 64
+	vrgather.vv	v6, v12, v24	# d >>>= 32
+	vrgather.vv	v2, v8,  v28	# b >>>= 96
+	vrgather.vv	v4, v10, v26	# c >>>= 64
 
 	addi		$a5, $a5, -1
 	bnez		$a5, .Loop_v
 
-	vadd.vv		v4, v0, v8	# a + a'
-	vadd.vv		v5, v1, v9	# b + b'
-	vadd.vv		v6, v2, v10	# c + c'
-	vadd.vv		v7, v3, v11	# d + d'
-	vadd.vv		v11, v11, v15	# advance the counter
+	vadd.vv		v8,  v0, v16	# a + a'
+	vadd.vv		v10, v2, v18	# b + b'
+	vadd.vv		v12, v4, v20	# c + c'
+	vadd.vv		v14, v6, v22	# d + d'
+	vadd.vv		v22, v22, v30	# advance the counter
 
-	li		$t4, 0
-.Loop_xor_v:
-	vslidedown.vx	v0, v4, $t4
-	vslidedown.vx	v1, v5, $t4
 	caddi		$t1, $inp, 16
-	vslidedown.vx	v2, v6, $t4
 	caddi		$t2, $inp, 32
-	vslidedown.vx	v3, v7, $t4
 	caddi		$t3, $inp, 48
+	li		$t4, 0
+	j		.Loop_xor_v_jump_in
+
+.Loop_xor_v:
+	vslidedown.vi	v8,  v8,  4
+	vslidedown.vi	v10, v10, 4
+	vslidedown.vi	v12, v12, 4
+	vslidedown.vi	v14, v14, 4
+.Loop_xor_v_jump_in:
 	vsetivli	zero, 16, e8
 	bltu		$len, $t0, .Ltail_v
 
-	vle8.v		v4, ($inp)
+	vle8.v		v0, ($inp)
 	addi		$len, $len, -64
-	vle8.v		v5, ($t1)
+	vle8.v		v1, ($t1)
 	caddi		$t1, $out, 16
-	vle8.v		v6, ($t2)
+	vle8.v		v2, ($t2)
 	caddi		$t2, $out, 32
-	vle8.v		v7, ($t3)
+	vle8.v		v3, ($t3)
 	caddi		$t3, $out, 48
-	vxor.vv		v4, v4, v0
-	vxor.vv		v5, v5, v1
-	vxor.vv		v6, v6, v2
-	vxor.vv		v7, v7, v3
+	vxor.vv		v0, v0, v8
+	vxor.vv		v1, v1, v10
+	vxor.vv		v2, v2, v12
+	vxor.vv		v3, v3, v14
 	caddi		$inp, $inp, 64
-	vse8.v		v4, ($out)
+	vse8.v		v0, ($out)
 	caddi		$out, $out, 64
-	vse8.v		v5, ($t1)
-	vse8.v		v6, ($t2)
-	vse8.v		v7, ($t3)
+	vse8.v		v1, ($t1)
+	caddi		$t1, $inp, 16
+	vse8.v		v2, ($t2)
+	caddi		$t2, $inp, 32
+	vse8.v		v3, ($t3)
+	caddi		$t3, $inp, 48
 	addi		$t4, $t4, 4
 	beqz		$len, .Ldone_v
-	vsetvli		zero, $vlen, e32
-	bltu		$t4, $vlen, .Loop_xor_v
 
-	bnez		$len, .Loop_outer_v
+	vsetvl		zero, $vlenw, $vtype
+	bltu		$t4, $vlenw, .Loop_xor_v
 
-.Ldone_v:
-	ret
+	j		.Loop_outer_v
 
 .Ltail_v:
 	li		$t0, 16
 	bleu		$len, $t0, .Last_v
 
-	vle8.v		v4, ($inp)
+	vle8.v		v0, ($inp)
 	caddi		$inp, $inp, 16
 	addi		$len, $len, -16
-	vxor.vv		v4, v4, v0
-	vmv.v.v		v0, v1
-	vse8.v		v4, ($out)
+	vxor.vv		v0, v0, v8
+	vmv.v.v		v8, v10
+	vse8.v		v0, ($out)
 	caddi		$out, $out, 16
 	bleu		$len, $t0, .Last_v
 
-	vle8.v		v5, ($inp)
+	vle8.v		v1, ($inp)
 	caddi		$inp, $inp, 16
 	addi		$len, $len, -16
-	vxor.vv		v5, v5, v1
-	vmv.v.v		v0, v2
-	vse8.v		v5, ($out)
+	vxor.vv		v1, v1, v10
+	vmv.v.v		v8, v12
+	vse8.v		v1, ($out)
 	caddi		$out, $out, 16
 	bleu		$len, $t0, .Last_v
 
-	vle8.v		v6, ($inp)
+	vle8.v		v2, ($inp)
 	caddi		$inp, $inp, 16
 	addi		$len, $len, -16
-	vxor.vv		v6, v6, v2
-	vmv.v.v		v0, v3
-	vse8.v		v6, ($out)
+	vxor.vv		v2, v2, v12
+	vmv.v.v		v8, v14
+	vse8.v		v2, ($out)
 	caddi		$out, $out, 16
 
 .Last_v:
 	vsetvli		zero, $len, e8
-	vle8.v		v4, ($inp)
-	vxor.vv		v4, v4, v0
-	vse8.v		v4, ($out)
+	vle8.v		v3, ($inp)
+	vxor.vv		v3, v3, v8
+	vse8.v		v3, ($out)
 
+.Ldone_v:
 	ret
 .size	ChaCha20_ctr32_v,.-ChaCha20_ctr32_v
 
@@ -954,13 +983,16 @@ ChaCha20_ctr32_vx:
 #ifdef	__riscv_zicfilp
 	lpad		0
 #endif
+	li		$t0, 256
+#ifdef	__riscv_zbb
+	bleu		$len, $t0, ChaCha20_ctr32
+#endif
+	bleu		$len, $t0, ChaCha20_ctr32_v
+#endif
 	caddi		$sp, $sp, -FRAMESIZE
 	PUSH		$ra, (FRAMESIZE-1*__SIZEOF_POINTER__)($sp)
 	PUSH		$s0, (FRAMESIZE-2*__SIZEOF_POINTER__)($sp)
 	cmove		$s0, $sp
-
-	li		$t0, 256
-	bleu		$len, $t0, .Lscalar_shortcut
 
 	li		$vlenw, -1		# ask for "infinite" vlen
 	vsetvli		$vlenw, $vlenw, e32	# get actual vlen [in words]
