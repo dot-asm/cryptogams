@@ -578,6 +578,9 @@ ChaCha20_ctr32_v:
 #ifdef	__riscv_zicfilp
 	lpad		0
 #endif
+	li		$t0, 128
+	bltu		$len, $t0, ChaCha20_ctr32
+
 	vsetivli	$zero, 4, e32
 	cllc		$t0, sigma
 
