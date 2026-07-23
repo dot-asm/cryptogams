@@ -1491,6 +1491,8 @@ sub process {
 	next;
     }
 
+    print $1 if ($line =~ s|(\{\w+\})||);
+
     $line =~ s|[#!].*$||;	# get rid of asm-style comments...
     $line =~ s|/\*.*\*/||;	# ... and C-style comments...
     $line =~ s|^\s+||;		# ... and skip white spaces in beginning
@@ -1896,7 +1898,7 @@ close STDOUT;
 #	...
 #	mov	-8(%rbp),%rbx
 #	mov	%rbp,%rsp
-# .cfi_def_cfa_regiser	%rsp
+# .cfi_def_cfa_register	%rsp
 #	pop	%rbp		# recognized by Windows
 # .cfi_pop	%rbp
 # .cfi_epilogue
