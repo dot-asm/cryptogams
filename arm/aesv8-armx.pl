@@ -44,10 +44,12 @@
 # Cortex-A72	1.33		0.85/0.88	0.92/0.96
 # Cortex-A76	1.25		0.70		0.74
 # Cortex-X2	1.26		0.38		0.43
+# Cortex-X925	1.25		0.24		0.34
 # Denver	1.96		0.65/0.86	0.76/0.80
 # Mongoose	1.33		1.23/1.20	1.30/1.20
 # Kryo		1.26		0.87/0.94	1.00/1.00
 # ThunderX2	5.95		1.25		1.30
+# Snapdragon X	1.32		0.27		0.29
 #
 # (*)	original 3.64/1.34/1.32 results were for r0p0 revision
 #	and are still same even for updated module;
@@ -79,7 +81,7 @@ $code=<<___;
 ___
 $code.=".arch	armv8-a+crypto\n.text\n"		if ($flavour =~ /64/);
 $code.=<<___						if ($flavour !~ /64/);
-.arch	armv7-a	// don't confuse not-so-latest binutils with argv8 :-)
+.arch	armv7-a	// don't confuse not-so-latest binutils with armv8 :-)
 .fpu	neon
 #ifdef	__thumb2__
 .syntax	unified
@@ -940,7 +942,7 @@ $code.=<<___;
 	ldr		$rounds,[$key,#240]
 
 	ldr		$ctr, [$ivp, #12]
-	vld1.32		{$dat0},[$ivp]
+	vld1.8		{$dat0},[$ivp]
 
 	vld1.32		{q8-q9},[$key]		// load key schedule...
 	sub		$rounds,$rounds,#4
@@ -1328,9 +1330,9 @@ if ($flavour =~ /64/) {			######## 64-bit code
 
 	# fix up remaining legacy suffixes
 	s/\.[ui]?8//o;
-	m/\],#8/o and s/\.16b/\.8b/go;
 	s/\.[ui]?32//o and s/\.16b/\.4s/go;
 	s/\.[ui]?64//o and s/\.16b/\.2d/go;
+	m/\],#8/o and s/\.([0-9]+)([bsd])/sprintf ".%d$2",$1>>1/geo;
 	s/\.[42]([sd])\[([0-3])\]/\.$1\[$2\]/o;
 
 	print $_,"\n";

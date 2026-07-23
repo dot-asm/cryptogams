@@ -20,11 +20,13 @@
 # Cortex-A57	2.31		11.6 (+86%)	7.51 (+260%(***))
 # Cortex-A76	1.60		9.5		6.05
 # Cortex-X2	1.60		7.3		2.60 (hw)
+# Cortex-X925	1.57		5.97		2.55 (hw)
 # Denver	2.01		10.5 (+26%)	6.70 (+8%)
 # X-Gene			20.0 (+100%)	12.8 (+300%(***))
 # Mongoose	2.36		13.0 (+50%)	8.36 (+33%)
 # Kryo		1.92		17.4 (+30%)	11.2 (+8%)
 # ThunderX2	2.54		13.2 (+40%)	8.40 (+18%)
+# Shapdragon X	1.40		7.43		2.23 (hw)
 #
 # (*)	Software SHA256 results are of lesser relevance, presented
 #	mostly for informational purposes.

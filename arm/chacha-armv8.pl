@@ -27,14 +27,16 @@
 # Apple A7		5.50/+49%	2.72		1.60
 # Apple A14/M1		4.50/+27%	1.84		1.27
 # Cortex-A53		8.40/+80%	4.06		4.45(*)
-# Cortex-A57		8.06/+43%	4.15		4.40(*)
+# Cortex-A57		8.06/+43%	4.08		4.40(*)
 # Cortex-A76		5.52		2.90		2.40
 # Cortex-X2		4.35		2.53		1.62
+# Cortex-X925		3.94		1.79		1.30
 # Denver		4.50/+82%	2.30		2.70(*)
 # X-Gene		9.50/+46%	8.20		8.90(*)
 # Mongoose		8.00/+44%	2.74		3.12(*)
 # Kryo			8.17/+50%	4.47		4.65(*)
 # ThunderX2		7.22/+48%	5.64		4.10
+# Snapdragon X		3.90		1.79		1.25
 #
 # (*)	slower than 4+1:-(
 
@@ -508,11 +510,13 @@ ChaCha20_neon:
 .Loop_neon:
 	sub	$ctr,$ctr,#1
 ___
-	my @plus_one=&ROUND(0,4,8,12);
-	foreach (&NEON_lane_ROUND(0,4,8,12))  { eval; eval(shift(@plus_one)); }
+	my @plus_one=&ROUND(0,4,8,12);	my $i=0;
+	foreach (&NEON_lane_ROUND(0,4,8,12))  { eval; eval(shift(@plus_one)) if ($i++ > 6); }
+	foreach (@plus_one) { eval; }
 
-	@plus_one=&ROUND(0,5,10,15);
-	foreach (&NEON_lane_ROUND(0,5,10,15)) { eval; eval(shift(@plus_one)); }
+	@plus_one=&ROUND(0,5,10,15);	$i=0;
+	foreach (&NEON_lane_ROUND(0,5,10,15)) { eval; eval(shift(@plus_one)) if ($i++ > 6); }
+	foreach (@plus_one) { eval; }
 $code.=<<___;
 	cbnz	$ctr,.Loop_neon
 

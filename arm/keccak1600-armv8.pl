@@ -42,9 +42,11 @@
 # Cortex-A57	12
 # Cortex-A76	7.9
 # Cortex-X2	6.1 (***)
+# Cortex-X925	3.0 (**)
 # X-Gene	14
 # Mongoose	10
 # Kryo		12
+# Snapdragon X	3.8 (**)
 # Denver	7.8
 # Apple A7	7.2
 # Apple A10	6.1

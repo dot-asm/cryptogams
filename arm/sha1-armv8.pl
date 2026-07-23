@@ -18,11 +18,13 @@
 # Cortex-A57	2.35			7.88 (+74%)
 # Cortex-A76	1.64			5.20
 # Cortex-X2	1.63			4.07
+# Cortex-X925	1.64			3.81
 # Denver	2.13			3.97 (+0%)(**)
 # X-Gene				8.80 (+200%)
 # Mongoose	2.05			6.50 (+160%)
 # Kryo		1.88			8.00 (+90%)
 # ThunderX2	2.64			6.36 (+150%)
+# Snapdraon X	1.48			3.82
 #
 # (*)	Software results are presented mostly for reference purposes.
 # (**)	Keep in mind that Denver relies on binary translation, which
