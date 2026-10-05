@@ -258,6 +258,14 @@ my $csetm = sub {
 
 ################################################################
 # CHERI-specific synthetic instructions
+my $alignd = sub {
+    my ($args,$comment) = split(m|\s*//|,shift);
+    $args =~ s/\b(?:x([0-9]+)|(sp))\b/c$1$2/g;
+    my @regs = split(m|,\s*|,$args);
+
+    "\talignd\t".join(',',@regs);
+};
+
 my $scvalue = sub {
     my ($args,$comment) = split(m|\s*//|,shift);
     $args =~ s/\b(?:x([0-9]+)|(sp))\b/c$1$2/g;
@@ -265,6 +273,15 @@ my $scvalue = sub {
     @regs[2] =~ s/\bc([0-9])\b/x$1/;
 
     "\tscvalue\t".join(',',@regs);
+};
+
+my $scbnds = sub {
+    my ($args,$comment) = split(m|\s*//|,shift);
+    $args =~ s/\b(?:x([0-9]+)|(sp))\b/c$1$2/g;
+    my @regs = split(m|,\s*|,$args);
+    @regs[2] =~ s/\bc([0-9])\b/x$1/;
+
+    "\tscbnds\t".join(',',@regs);
 };
 
 my $cadd = sub {
@@ -359,7 +376,7 @@ sub expand_line {
     if ($flavour =~ /cheri/) {
 	$line =~ s/\[\s*(?:x([0-9]+)|(sp))\s*(,?.*)\]/[c$1$2$3]/;
     } else {
-	$line =~ s/\bc((?:[0-9]+|zr))\b/x$1/g;
+	$line =~ s/\bc([0-9]+)\b/x$1/g;
 	$line =~ s/\bcsp\b/sp/g;
     }
 
