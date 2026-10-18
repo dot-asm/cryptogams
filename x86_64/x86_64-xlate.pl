@@ -432,10 +432,8 @@ my %globals;
 			$func .= "	movq	%rdi,8(%rsp)\n";
 			$func .= "	movq	%rsi,16(%rsp)\n";
 			$func .= "	movq	%rsp,$fp\n";
-			$func .= "${decor}SEH_begin_$current_function->{name}:\n";
 		    } elsif ($current_function->{unwind}) {
 			$func .= "	movq	%rsp,%r11\n";
-			$func .= "${decor}SEH_begin_$current_function->{name}:\n";
 		    }
 		}
 	    } elsif ($win64 && $current_function->{abi} eq "svr4"
@@ -462,10 +460,8 @@ my %globals;
 		$func .= "	mov	QWORD$PTR\[8+rsp\],rdi\t;WIN64 prologue\n";
 		$func .= "	mov	QWORD$PTR\[16+rsp\],rsi\n";
 		$func .= "	mov	$fp,rsp\n";
-		$func .= "${decor}SEH_begin_$current_function->{name}${colon}\n";
 	    } elsif ($current_function->{unwind}) {
 		$func .= "	mov	r11,rsp\n";
-		$func .= "${decor}SEH_begin_$current_function->{name}${colon}\n";
 	    }
 	    $func;
 	}
@@ -728,15 +724,17 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 		$len += $#{@dat[-1]}+1;
 		$offset -= 8;
 	    }
-	    if ($offset <= 128) {
-		my $alloc = ($offset - 8) >> 3;
-		push @dat, [0,$alloc<<4|2];		# UWOP_ALLOC_SMALL
-	    } elsif ($offset < 0x80000) {
-		push @dat, [0,0x01,unpack("C2",pack("v",$offset>>3))];
-	    } else {
-		push @dat, [0,0x11,unpack("C4",pack("V",$offset))];
+	    if ($offset) {
+		if ($offset <= 128) {
+		    my $alloc = ($offset - 8) >> 3;
+		    push @dat, [0,$alloc<<4|2];		# UWOP_ALLOC_SMALL
+		} elsif ($offset < 0x80000) {
+		    push @dat, [0,0x01,unpack("C2",pack("v",$offset>>3))];
+		} else {
+		    push @dat, [0,0x11,unpack("C4",pack("V",$offset))];
+		}
+		$len += $#{@dat[-1]}+1;
 	    }
-	    $len += $#{@dat[-1]}+1;
 	}
 
 	# save frame pointer [if not pushed already]
@@ -810,8 +808,12 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	    # value and current CFA, Canonical Frame Address, which is
 	    # why it starts with -8. Recall that CFA is top of caller's
 	    # stack...
-	    /startproc/	&& do {	$dir = startproc(); last; };
+	    /startproc/	&& do {	$dir = startproc();
+				$self->{win64} = ".startproc";
+				last;
+			      };
 	    /endproc/	&& do {	$dir = endproc();
+				$self->{win64} = ".endproc";
 				# .cfi_remember_state directives that are not
 				# matched with .cfi_restore_state are
 				# unnecessary.
@@ -893,8 +895,8 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 				last;
 			      };
 	    /restore_state/
-			&& do {	     ($cfa_reg,$cfa_off,$cfa_rsp,%saved_regs)
-				= @{pop @cfa_stack};
+			&& do {	($cfa_reg,$cfa_off,$cfa_rsp,%saved_regs)
+				    = @{pop @cfa_stack};
 				last;
 			      };
 	    /offset/	&& do { if ($$line =~ /(%\w+)(?:-%xmm(\d+))?\s*,\s*(.+)/) {
@@ -944,8 +946,13 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 	    my ($reg, $off) = ($cfa_reg =~ /%(?!rsp)/)  ? ($',    $cfa_off)
 							: ("rsp", $cfa_rsp);
 	    my $fname = $current_function->{name};
+	    if (my $pre = $current_function->{frag}) {
+		$fname = $pre."_".$fname;
+	    }
 
-	    if ($ret eq ".endprolog") {
+	    if ($ret eq ".startproc") {
+		$ret = "${decor}SEH_begin_$fname${colon}";
+	    } elsif ($ret eq ".endprolog") {
 		$ret = "";
 		if ($current_function->{abi} eq "svr4") {
 		    $ret .= label::win64_args();
@@ -1024,6 +1031,9 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 			$ret .= "	mov	rsi,QWORD$PTR\[".(8-$off)."+$reg\]\n";
 		    }
 		}
+	    } elsif ($ret eq ".endproc") {
+		$ret = "${decor}SEH_end_${fname}${colon}\n" if ($current_function->{abi} eq "svr4");
+		$current_function->{frag}++;
 	    }
 	    return $ret;
 	}
@@ -1102,8 +1112,6 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 		    if ($dwarf and my $endproc = cfi_directive::endproc()) {
 			$self->{value} = ".cfi_$endproc\n$self->{value}";
 		    } elsif (!$elf && defined($current_function)) {
-			$self->{value} .= "${decor}SEH_end_$current_function->{name}:"
-				if ($win64 && $current_function->{abi} eq "svr4");
 			undef $current_function;
 		    }
 		} elsif (!$elf && $dir =~ /\.align/) {
@@ -1195,9 +1203,6 @@ my @pdata_seg = (".section	.pdata", ".align	4");
 				  };
 		/\.size/    && do { if (defined($current_function)) {
 					undef $self->{value};
-					if ($current_function->{abi} eq "svr4") {
-					    $self->{value}="${decor}SEH_end_$current_function->{name}${colon}\n";
-					}
 					$self->{value}.="$current_function->{name}\tENDP" if($masm && $current_function->{name});
 					undef $current_function;
 				    }
