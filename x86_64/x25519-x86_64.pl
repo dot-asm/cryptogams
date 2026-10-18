@@ -422,7 +422,7 @@ x25519_fe51_sqr:
 	mov	8*10(%rsp),%rbp
 .cfi_restore	%rbp
 	lea	8*11(%rsp),%rsp
-.cfi_adjust_cfa_offset	88
+.cfi_adjust_cfa_offset	-88
 .cfi_epilogue
 	ret
 .cfi_endproc
@@ -709,7 +709,7 @@ x25519_fe64_sqr:
 	mov	8*8(%rsp),%rbp
 .cfi_restore	%rbp
 	lea	8*9(%rsp),%rsp
-.cfi_adjust_cfa_offset	88
+.cfi_adjust_cfa_offset	-72
 .cfi_epilogue
 	ret
 .cfi_endproc
