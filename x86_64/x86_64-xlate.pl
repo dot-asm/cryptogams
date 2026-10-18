@@ -1491,7 +1491,7 @@ sub process {
 	next;
     }
 
-    print $1 if ($line =~ s|(\{\w+\})||);
+    print $1 if ($line =~ s|^\s*(\{\w+\})||);
 
     $line =~ s|[#!].*$||;	# get rid of asm-style comments...
     $line =~ s|/\*.*\*/||;	# ... and C-style comments...
