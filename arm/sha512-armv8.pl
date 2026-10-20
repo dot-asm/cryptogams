@@ -195,9 +195,16 @@ $code.=<<___;
 .type	$func,%function
 .align	6
 $func:
+	hint	#34
 #ifndef	__KERNEL__
+# ifdef	__CHERI_PURE_CAPABILITY__
+	adrp	c16,:got:OPENSSL_armcap_P
+	ldr	c16,[c16,#:got_lo12:OPENSSL_armcap_P]
+	ldr	w16,[c16]
+# else
 	adrp	c16,OPENSSL_armcap_P
 	ldr	w16,[c16,#:lo12:OPENSSL_armcap_P]
+# endif
 ___
 $code.=<<___	if ($SZ==4);
 	tst	w16,#ARMV8_SHA256
@@ -211,7 +218,7 @@ $code.=<<___	if ($SZ==8);
 ___
 $code.=<<___;
 #endif
-	.inst	0xd503233f				// paciasp
+	paciasp
 	stp	c29,c30,[csp,#-16*__SIZEOF_POINTER__]!
 	add	c29,csp,#0
 
@@ -274,7 +281,7 @@ $code.=<<___;
 	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
 	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
 	ldp	c29,c30,[csp],#16*__SIZEOF_POINTER__
-	.inst	0xd50323bf				// autiasp
+	autiasp
 	ret
 .size	$func,.-$func
 
@@ -363,6 +370,7 @@ $code.=<<___;
 .type	sha256_block_armv8,%function
 .align	6
 sha256_block_armv8:
+	hint		#34
 .Lv8_entry:
 	stp		c29,c30,[csp,#-2*__SIZEOF_POINTER__]!
 	add		c29,csp,#0
@@ -626,6 +634,7 @@ $code.=<<___;
 .type	sha256_block_neon,%function
 .align	4
 sha256_block_neon:
+	hint	#34
 .Lneon_entry:
 	stp	c29, c30, [csp, #-2*__SIZEOF_POINTER__]!
 	mov	c29, csp
@@ -885,6 +894,15 @@ foreach(split("\n",$code)) {
 	m/(ld|st)1[^\[]+\[0\]/	and s/\.4s/\.s/g;
 
 	s/([cw])#x([0-9]+)/$1$2/g;
+
+	if (!$flavour or $flavour eq "void") {
+	    s/paciasp/hint	#25/ or
+	    s/autiasp/hint	#29/ or
+	    s/c(add|sub)/$1/;
+
+	    s/\bc([0-9]+|zr)\b/x$1/g;
+	    s/\bcsp\b/sp/g;
+	}
 
 	print $_,"\n";
 }

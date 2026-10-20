@@ -187,11 +187,19 @@ $code.=<<___;
 .type	sha1_block_data_order,%function
 .align	6
 sha1_block_data_order:
+	hint	#34
+#ifdef	__CHERI_PURE_CAPABILITY__
+	adrp	c16,:got:OPENSSL_armcap_P
+	ldr	c16,[c16,#:got_lo12:OPENSSL_armcap_P]
+	ldr	w16,[c16]
+#else
 	adrp	c16,OPENSSL_armcap_P
 	ldr	w16,[c16,#:lo12:OPENSSL_armcap_P]
+#endif
 	tst	w16,#ARMV8_SHA1
 	b.ne	.Lv8_entry
 
+	paciasp
 	stp	c29,c30,[csp,#-12*__SIZEOF_POINTER__]!
 	add	c29,csp,#0
 	stp	c19,c20,[csp,#2*__SIZEOF_POINTER__]
@@ -238,6 +246,7 @@ $code.=<<___;
 	ldp	c25,c26,[csp,#8*__SIZEOF_POINTER__]
 	ldp	c27,c28,[csp,#10*__SIZEOF_POINTER__]
 	ldr	c29,[csp],#12*__SIZEOF_POINTER__
+	autiasp
 	ret
 .size	sha1_block_data_order,.-sha1_block_data_order
 ___
@@ -252,9 +261,10 @@ $code.=<<___;
 .type	sha1_block_armv8,%function
 .align	6
 sha1_block_armv8:
+	hint	#34
 .Lv8_entry:
-	stp	x29,x30,[sp,#-16]!
-	add	x29,sp,#0
+	stp	c29,c30,[sp,#-2*__SIZEOF_POINTER__]!
+	add	c29,csp,#0
 
 	adr	x4,.Lconst
 	eor	$E,$E,$E
@@ -313,7 +323,7 @@ $code.=<<___;
 	st1.32	{$ABCD},[$ctx],#16
 	st1.32	{$E}[0],[$ctx]
 
-	ldr	x29,[sp],#16
+	ldr	c29,[csp],#2*__SIZEOF_POINTER__
 	ret
 .size	sha1_block_armv8,.-sha1_block_armv8
 .align	6
