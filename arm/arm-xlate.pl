@@ -376,7 +376,7 @@ sub expand_line {
     if ($flavour =~ /cheri/) {
 	$line =~ s/\[\s*(?:x([0-9]+)|(sp))\s*(,?.*)\]/[c$1$2$3]/;
     } else {
-	$line =~ s/\bc([0-9]+)\b/x$1/g;
+	$line =~ s/\bc([0-9]+|zr)\b/x$1/g;
 	$line =~ s/\bcsp\b/sp/g;
     }
 
