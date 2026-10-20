@@ -148,19 +148,26 @@ $code.=<<___;
 .type	ChaCha20_ctr32,%function
 .align	5
 ChaCha20_ctr32:
+	hint	#34
 	cbz	$len,.Labort
 	cmp	$len,#192
 	b.lo	.Lshort
 
 #ifndef	__KERNEL__
+# ifdef	__CHERI_PURE_CAPABILITY__
+	adrp	c17,:got:OPENSSL_armcap_P
+	ldr	c17,[c17,:got_lo12:OPENSSL_armcap_P]
+	ldr	w17,[c17]
+# else
 	adrp	c17,OPENSSL_armcap_P
 	ldr	w17,[c17,#:lo12:OPENSSL_armcap_P]
+# endif
 	tst	w17,#ARMV7_NEON
 	b.ne	.LChaCha20_neon
 #endif
 
 .Lshort:
-	.inst	0xd503233f			// paciasp
+	paciasp
 	stp	c29,c30,[sp,#-12*__SIZEOF_POINTER__]!
 	add	c29,csp,#0
 
@@ -280,7 +287,7 @@ $code.=<<___;
 	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
 	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
 	ldp	c29,c30,[csp],#12*__SIZEOF_POINTER__
-	.inst	0xd50323bf			// autiasp
+	autiasp
 .Labort:
 	ret
 
@@ -337,7 +344,7 @@ $code.=<<___;
 	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
 	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
 	ldp	c29,c30,[csp],#12*__SIZEOF_POINTER__
-	.inst	0xd50323bf			// autiasp
+	autiasp
 	ret
 .size	ChaCha20_ctr32,.-ChaCha20_ctr32
 ___
@@ -436,7 +443,7 @@ $code.=<<___;
 .align	5
 ChaCha20_neon:
 .LChaCha20_neon:
-	.inst	0xd503233f			// paciasp
+	paciasp
 	stp	c29,c30,[csp,#-12*__SIZEOF_POINTER__]!
 	add	c29,csp,#0
 
@@ -675,7 +682,7 @@ $code.=<<___;
 	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
 	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
 	ldp	c29,c30,[csp],#12*__SIZEOF_POINTER__
-	.inst	0xd50323bf			// autiasp
+	autiasp
 	ret
 
 .align	4
@@ -809,7 +816,7 @@ $code.=<<___;
 	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
 	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
 	ldp	c29,c30,[csp],#12*__SIZEOF_POINTER__
-	.inst	0xd50323bf			// autiasp
+	autiasp
 	ret
 
 .align	4
@@ -871,7 +878,7 @@ $code.=<<___;
 .type	ChaCha20_512_neon,%function
 .align	5
 ChaCha20_512_neon:
-	.inst	0xd503233f			// paciasp
+	paciasp
 	stp	c29,c30,[csp,#-12*__SIZEOF_POINTER__]!
 	add	c29,csp,#0
 
@@ -1303,7 +1310,7 @@ $code.=<<___;
 	ldp	c25,c26,[c29,#8*__SIZEOF_POINTER__]
 	ldp	c27,c28,[c29,#10*__SIZEOF_POINTER__]
 	ldp	c29,c30,[csp],#12*__SIZEOF_POINTER__
-	.inst	0xd50323bf			// autiasp
+	autiasp
 	ret
 .size	ChaCha20_512_neon,.-ChaCha20_512_neon
 ___

@@ -77,8 +77,14 @@ poly1305_init:
 	b.eq	.Lno_key
 
 #ifndef	__KERNEL__
+# ifdef	__CHERI_PURE_CAPABILITY__
+	adrp	c17,:got:OPENSSL_armcap_P
+	ldr	c17,[c17,:got_lo12:OPENSSL_armcap_P]
+	ldr	w17,[c17]
+# else
 	adrp	c17,OPENSSL_armcap_P
 	ldr	w17,[c17,#:lo12:OPENSSL_armcap_P]
+# endif
 #endif
 
 	ldp	$r0,$r1,[$inp]		// load key
