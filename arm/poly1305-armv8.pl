@@ -68,6 +68,7 @@ $code.=<<___;
 .type	poly1305_init,%function
 .align	5
 poly1305_init:
+	hint	#34
 	cmp	$inp,xzr
 	stp	xzr,xzr,[$ctx]		// zero hash value
 	stp	xzr,xzr,[$ctx,#16]	// [along with is_base2_26]
@@ -126,6 +127,7 @@ poly1305_init:
 .align	5
 poly1305_blocks:
 .Lpoly1305_blocks:
+	hint	#34
 	ands	$len,$len,#-16
 	b.eq	.Lno_data
 
@@ -217,6 +219,7 @@ poly1305_blocks:
 .align	5
 poly1305_emit:
 .Lpoly1305_emit:
+	hint	#34
 	ldp	$h0,$h1,[$ctx]		// load hash base 2^64
 	ldp	$h2,$r0,[$ctx,#16]	// [along with is_base2_26]
 	ldp	$t0,$t1,[$nonce]	// load nonce
@@ -355,11 +358,12 @@ poly1305_splat:
 .align	5
 poly1305_blocks_neon:
 .Lpoly1305_blocks_neon:
+	hint	#34
 	ldr	$is_base2_26,[$ctx,#24]
 	cmp	$len,#128
 	b.lo	.Lpoly1305_blocks
 
-	.inst	0xd503233f		// paciasp
+	paciasp
 	stp	c29,c30,[csp,#-2*__SIZEOF_POINTER__-64]!
 	add	c29,csp,#0
 
@@ -895,7 +899,7 @@ poly1305_blocks_neon:
 	str	x4,[$ctx,#8]		// set is_base2_26
 
 	ldr	c29,[csp],#2*__SIZEOF_POINTER__+64
-	 .inst	0xd50323bf		// autiasp
+	autiasp
 	ret
 .size	poly1305_blocks_neon,.-poly1305_blocks_neon
 
@@ -910,6 +914,19 @@ poly1305_blocks_neon:
 #endif
 ___
 
+if (!$flavour or $flavour eq "void") {
+$code.=<<___;
+#if defined(__ARM_FEATURE_BTI_DEFAULT) || defined(__ARM_FEATURE_PAC_DEFAULT)
+.section        .note.gnu.property,"a",\@note
+	.long   4,2f-1f,5
+	.byte   0x47,0x4E,0x55,0
+1:	.long   0xc0000000,4,3
+.align  3
+2:
+#endif
+___
+}
+
 foreach (split("\n",$code)) {
 	s/\b(shrn\s+v[0-9]+)\.[24]d/$1.2s/			or
 	s/\b(fmov\s+)v([0-9]+)[^,]*,\s*x([0-9]+)/$1d$2,x$3/	or
@@ -921,6 +938,15 @@ foreach (split("\n",$code)) {
 
 	s/\.[124]([sd])\[/.$1\[/;
 	s/([cw])#x([0-9]+)/$1$2/g;
+
+	if (!$flavour or $flavour eq "void") {
+	    s/paciasp/hint	#25/ or
+	    s/autiasp/hint	#29/ or
+	    s/c(add|sub)/$1/;
+
+	    s/\bc([0-9]+|zr)\b/x$1/g;
+	    s/\bcsp\b/sp/g;
+	}
 
 	print $_,"\n";
 }
